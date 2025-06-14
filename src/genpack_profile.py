@@ -1,4 +1,4 @@
-import os,subprocess,glob
+import os,subprocess,glob,tempfile
 import workdir,user_dir,upstream,genpack_json,global_options
 from sudo import sudo
 
@@ -200,6 +200,30 @@ def link_files(srcdir, dstdir):
     
     return newest_file
 
+def create_etc_portage_files_for_genpack(gentoo_dir):
+    etc_portage_dir = os.path.join(gentoo_dir, "etc/portage")
+    accept_keywords_dir = os.path.join(etc_portage_dir, "package.accept_keywords")
+    use_dir = os.path.join(etc_portage_dir, "package.use")
+    if not os.path.exists(accept_keywords_dir):
+        subprocess.check_call(sudo(["mkdir", "-p", accept_keywords_dir]))
+    if not os.path.exists(accept_keywords_dir):
+        subprocess.check_call(sudo(["mkdir", "-p", use_dir]))
+
+    if os.path.isdir(accept_keywords_dir):
+        # create temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"dev-cpp/argparse\n")
+            temp_file = f.name
+        # move it to /etc/portage/package.accept_keywords/genpack using sudo mv
+        subprocess.check_call(sudo(["mv", temp_file, os.path.join(accept_keywords_dir, "genpack")]))
+    if os.path.isdir(use_dir):
+        # create temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"sys-kernel/installkernel dracut\n")
+            temp_file = f.name
+        # move it to /etc/portage/package.use/genpack using sudo mv
+        subprocess.check_call(sudo(["mv", temp_file, os.path.join(use_dir, "genpack")]))
+
 def prepare(profile, disable_using_binpkg = False, setup_only = False):
     extract_portage()
     gentoo_dir = profile.get_gentoo_workdir()
@@ -220,10 +244,12 @@ def prepare(profile, disable_using_binpkg = False, setup_only = False):
     portage_time = os.stat(os.path.join(portage_dir, "metadata/timestamp")).st_mtime
     overlay_time = 0
     overlay_dir = user_dir.get_overlay_dir()
-    # check latest mtime of overlay_dir/**/Manifect
+    # check latest mtime of overlay_dir/**/Manifest
     for manifest in glob.glob("**/Manifest", root_dir=overlay_dir, recursive=True):
         overlay_time = max(overlay_time, os.stat(os.path.join(overlay_dir, manifest)).st_mtime)
     newest_file = max(newest_file, portage_time, overlay_time)
+
+    create_etc_portage_files_for_genpack(gentoo_dir)
 
     if setup_only or (done_file_time is not None and  newest_file <= done_file_time): return
 
