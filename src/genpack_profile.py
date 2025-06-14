@@ -3,8 +3,14 @@ import workdir,user_dir,upstream,genpack_json,global_options
 from sudo import sudo
 
 CONTAINER_NAME="genpack-profile-%d" % os.getpid()
+DEFAULT_OVERLAY_SOURCE = "https://github.com/wbrxcorp/genpack-overlay.git"
 _extract_portage_done = False
 _pull_overlay_done = False
+_overlay_source = DEFAULT_OVERLAY_SOURCE
+
+def set_overlay_source(overlay_source):
+    global _overlay_source
+    _overlay_source = overlay_source
 
 class Profile:
     def __init__(self, profile):
@@ -139,19 +145,26 @@ def extract_stage3(root_dir, variant = "systemd"):
         pass
     return True
 
-def sync_overlay(root_dir, overlay_url = "https://github.com/wbrxcorp/genpack-overlay.git"):
-    with user_dir.overlay_dir() as overlay_dir:
-        global _pull_overlay_done
-        if not _pull_overlay_done:
-            if os.path.exists(os.path.join(overlay_dir, ".git")):
-                print("Syncing genpack-overlay...")
-                if subprocess.call(["git", "-C", overlay_dir, "pull"]) != 0:
-                    print("Failed to pull genpack-overlay, proceeding without sync")
-            else:
-                print("Cloning genpack-overlay...")
-                subprocess.check_call(["git", "clone", overlay_url, overlay_dir])
-            _pull_overlay_done = True
-        subprocess.check_call(sudo(["rsync", "-a", "--delete", overlay_dir, os.path.join(root_dir, "var/db/repos/")]))
+def sync_overlay(root_dir):
+    if _overlay_source.startswith("https://") or _overlay_source.startswith("git@github.com:"):
+        with user_dir.overlay_dir() as overlay_dir:
+            global _pull_overlay_done
+            if not _pull_overlay_done:
+                if os.path.exists(os.path.join(overlay_dir, ".git")):
+                    print("Syncing genpack-overlay...")
+                    if subprocess.call(["git", "-C", overlay_dir, "pull"]) != 0:
+                        print("Failed to pull genpack-overlay, proceeding without sync")
+                else:
+                    print("Cloning genpack-overlay...")
+                    subprocess.check_call(["git", "clone", _overlay_source, overlay_dir])
+                _pull_overlay_done = True
+            subprocess.check_call(sudo(["rsync", "-a", "--delete", overlay_dir, os.path.join(root_dir, "var/db/repos/")]))
+    else: # from local directory
+        print("Using genpack-overlay from %s" % _overlay_source)
+        if not os.path.exists(os.path.join(root_dir, "var/db/repos/genpack-overlay")):
+            os.makedirs(os.path.join(root_dir, "var/db/repos/genpack-overlay"))
+        subprocess.check_call(sudo(["rsync", "-a", "--delete", _overlay_source + "/", os.path.join(root_dir, "var/db/repos/genpack-overlay/")]))
+
     if not os.path.exists(os.path.join(root_dir, "etc/portage/repos.conf")):
         subprocess.check_call(sudo(["mkdir", "-m", "0777", os.path.join(root_dir, "etc/portage/repos.conf")]))
     if not os.path.isfile(os.path.join(root_dir, "etc/portage/repos.conf/genpack-overlay.conf")):

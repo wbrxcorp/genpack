@@ -7,6 +7,7 @@ import upstream,workdir,genpack_profile,genpack_artifact,qemu,global_options
 from sudo import sudo
 
 def prepare(args):
+    genpack_profile.set_overlay_source(args.overlay_source)
     profiles = []
     if len(args.profile) == 0 and os.path.isdir("./profiles"):
         profiles += genpack_profile.Profile.get_all_profiles()
@@ -19,7 +20,7 @@ def prepare(args):
     for profile in profiles:
         print("Preparing profile %s..." % profile.name)
         try:
-            genpack_profile.prepare(profile, disable_using_binpkg)
+            genpack_profile.prepare(profile, disable_using_binpkg, False)
         except Exception as e:
             if args.keep_going:
                 logging.error("Error occurred while preparing profile %s: %s" % (profile.name, str(e)))
@@ -27,12 +28,14 @@ def prepare(args):
                 raise e
 
 def bash(args):
+    genpack_profile.set_overlay_source(args.overlay_source)
     if global_options.debug():
         logging.debug(args.bind)
     profile = genpack_profile.Profile(args.profile)
     genpack_profile.bash(profile, args.bind)
 
 def build(args):
+    genpack_profile.set_overlay_source(args.overlay_source)
     artifacts = []
     if len(args.artifact) == 0 and os.path.isdir("./artifacts"):
         artifacts += [artifact for artifact in genpack_artifact.Artifact.get_all_artifacts() if artifact.arch_matches()]
@@ -128,12 +131,14 @@ if __name__ == "__main__":
     prepare_parser.add_argument('profile', nargs='*', default=[], help='Profiles to prepare')
     prepare_parser.add_argument('--keep-going', action='store_true', help='Keep going even if an error occurs')
     prepare_parser.add_argument('--disable-using-binpkg', action='store_true', help='Disable using binary packages')
+    prepare_parser.add_argument('--overlay-source', default=genpack_profile.DEFAULT_OVERLAY_SOURCE, help='Source git URL or directory for overlay files')
     prepare_parser.set_defaults(func=prepare)
 
     # bash subcommand
     bash_parser = subparsers.add_parser('bash', help='Run bash on a profile')
     bash_parser.add_argument('profile', nargs='?', default='default', help='Profile to run bash')
     bash_parser.add_argument('--bind', action='append', default=[], help="Bind mount in HOST_PATH:CONTAINER_PATH format")
+    bash_parser.add_argument('--overlay-source', default=genpack_profile.DEFAULT_OVERLAY_SOURCE, help='Source git URL or directory for overlay files')
     bash_parser.set_defaults(func=bash)
 
     # build subcommand
@@ -143,6 +148,7 @@ if __name__ == "__main__":
     build_parser.add_argument('--disable-using-binpkg', action='store_true', help='Disable using binary packages')
     build_parser.add_argument('--variant', default=None, help='Variant to build')
     build_parser.add_argument('--compression-override', default=None, help='Override compression method')
+    build_parser.add_argument('--overlay-source', default=genpack_profile.DEFAULT_OVERLAY_SOURCE, help='Source git URL or directory for overlay files')
     build_parser.set_defaults(func=build)
 
     # run subcommand
