@@ -19,6 +19,7 @@ install: all
 	@echo "Installing genpack to $(DESTDIR)$(PREFIX)/bin"
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	cp src/genpack.py $(DESTDIR)$(PREFIX)/bin/genpack
+	chmod +x $(DESTDIR)$(PREFIX)/bin/genpack
 	@echo "Installation complete."
 
 clean:

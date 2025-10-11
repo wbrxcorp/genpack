@@ -579,7 +579,7 @@ def lower(variant=None, devel=False):
     if len(binpkg_excludes) > 0:
         emerge_cmd += ["--usepkg-exclude", " ".join(binpkg_excludes)]
         emerge_cmd += ["--buildpkg-exclude", " ".join(binpkg_excludes)]
-    emerge_cmd += ["@world", "genpack-progs", "@genpack-runtime", "@genpack-buildtime"]
+    emerge_cmd += ["@world", "@genpack-runtime", "@genpack-buildtime"]
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image] + emerge_cmd, check=True)
     logging.info("Rebuilding kernel modules if necessary...")
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "rebuild-kernel-modules-if-necessary"], check=True)
