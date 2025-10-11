@@ -1,0 +1,5 @@
+test/work/
+*.squashfs
+.vscode/
+__pycache__/
+*.bin
