@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-import os,logging,io,tarfile,subprocess,re,json,argparse,json,hashlib,time
+import os,logging,io,tarfile,subprocess,re,json,argparse,json,time,fcntl,struct
 from datetime import datetime
 
 import json5 # dev-python/json5
@@ -469,8 +469,21 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
                 "services","arch"
             ])
 
+def create_work_root():
+    try:
+        os.makedirs(work_root, exist_ok=False)
+        # add +d attrribute to work_root to exclude from backup
+        FS_IOC_SETFLAGS = 0x40086602
+        FS_NODUMP_FL    = 0x00000040
+        fd = os.open(work_root, os.O_RDONLY | os.O_DIRECTORY)
+        fcntl.ioctl(fd, FS_IOC_SETFLAGS, struct.pack("i", FS_NODUMP_FL))
+    except FileExistsError:
+        if not os.path.isdir(work_root):
+            raise
+
 def lower(variant=None, devel=False):
     logging.info("Processing lower layer...")
+    create_work_root()
     os.makedirs(work_dir, exist_ok=True)
     # todo: create .gitignore in work_root
     stage3_is_new = False
