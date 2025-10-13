@@ -177,12 +177,13 @@ fi
             print(line)  # Print other messages from the script
     return 0
 
-def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packages, accept_keywords, use, license, mask):
+def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packages, accept_keywords, use, license, mask, env):
     if accept_keywords is None: accept_keywords = {}
     if use is None: use = {}
     if license is None: license = {}
     if mask is None: mask = []
     if buildtime_packages is None: buildtime_packages = []
+    if env is None: env = {}
 
     files = {}
 
@@ -238,6 +239,18 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         raise ValueError("mask must be a list")
     files["etc/portage/package.mask/genpack"] = "\n".join(mask)
 
+    if not isinstance(env, dict):
+        raise ValueError("env must be a dictionary")
+    env_content = ""
+    for k, v in env.items():
+        if v is None:
+            env_content += f"{k}\n"
+        elif isinstance(v, list):
+            env_content += f"{k} {' '.join(v)}\n"
+        else:
+            env_content += f"{k} {v}\n"
+    files["etc/portage/package.env"] = env_content
+
     tar_buf = io.BytesIO()
     with tarfile.open(fileobj=tar_buf, mode='w') as tar:
         for path, content in files.items():
@@ -271,6 +284,14 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/kernel", "/etc/kernel"], check=True)  
     else:
         script = """[ -d /etc/kernel ] && echo "Removing existing kernel directory" && rm -rf /etc/kernel || true"""
+        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+
+    # apply env
+    if os.path.isdir("env"):
+        logging.info(f"Installing env...")
+        subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/env", "/etc/portage"], check=True)
+    else:
+        script = """[ -d /etc/portage/env ] && echo "Removing existing env directory" && rm -rf /etc/portage/env || true"""
         subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
 
     # apply local overlay
@@ -325,8 +346,8 @@ def load_genpack_json(directory="."):
     return (json_parser.load(open(json_file, "r")), os.path.getmtime(json_file))
 
 def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "outfile","devel","packages","buildtime_packages",
-                                                           "accept_keywords","use","mask","license","binpkg_excludes","users","groups", 
-                                                           "services", "arch","variants", ], variant = None):
+                                                           "accept_keywords","use","mask","license","env","binpkg_excludes","users","groups", 
+                                                           "setup_commands", "services", "arch","variants", ], variant = None):
     if not isinstance(trunk, dict):
         raise ValueError("trunk must be a dictionary")
     #else
@@ -407,6 +428,14 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
         for k, v in branch["license"].items():
             trunk["license"][k] = v
     
+    if "env" in allowed_properties and "env" in branch:
+        if not isinstance(branch["env"], dict):
+            raise ValueError(f"env at {path_str} must be a dictionary")
+        #else
+        if "env" not in trunk: trunk["env"] = {}
+        for k, v in branch["env"].items():
+            trunk["env"][k] = v
+    
     if "binpkg_excludes" in allowed_properties:
         if "binpkg-exclude" in branch:
             raise ValueError(f"binpkg-exclude at {path_str} is deprecated, use binpkg_excludes instead")
@@ -435,6 +464,14 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
         if "groups" not in trunk: trunk["groups"] = []
         trunk["groups"] += branch["groups"]
     
+    if "setup_commands" in allowed_properties and "setup_commands" in branch:
+        if not isinstance(branch["setup_commands"], list):
+            raise ValueError(f"setup_commands at {path_str} must be a list")
+        #else
+        if "setup_commands" not in trunk: trunk["setup_commands"] = []
+        for cmd in branch["setup_commands"]:
+            trunk["setup_commands"].append(cmd)
+
     if "services" in allowed_properties and "services" in branch:
         if not isinstance(branch["services"], list):
             raise ValueError(f"services at {path_str} must be a list")
@@ -454,7 +491,7 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
             if arch in k.split('|'):
                 merge_genpack_json(trunk, v, path + [f"arch={k}"], [
                     "packages","buildtime_packages",
-                    "accept_keywords","use","mask","license","binpkg_excludes","services"
+                    "accept_keywords","use","mask","license","env","binpkg_excludes","setup_commands","services"
                 ])
     
     if "variants" in allowed_properties and "variants" in branch and variant is not None:
@@ -465,8 +502,8 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
         if variant in branch["variants"]:
             merge_genpack_json(trunk, branch["variants"][variant], path + [f"variant={variant}"], [
                 "name","profile","outfile","packages","buildtime_packages",
-                "accept_keywords","use","mask","license","binpkg_excludes","users","groups",
-                "services","arch"
+                "accept_keywords","use","mask","license","env","binpkg_excludes","users","groups",
+                "services","setup_commands","arch"
             ])
 
 def create_work_root():
@@ -539,7 +576,7 @@ def lower(variant=None, devel=False):
     merged_genpack_json = {}
     merge_genpack_json(merged_genpack_json, genpack_json, ["genpack.json"], 
         ["profile","devel","packages","buildtime_packages",
-            "accept_keywords","use","mask","license","binpkg_excludes",
+            "accept_keywords","use","mask","license","env","binpkg_excludes",
             "arch","variants"], variant)
 
     profile = genpack_json.get("profile", None)
@@ -553,7 +590,8 @@ def lower(variant=None, devel=False):
                                 merged_genpack_json.get("accept_keywords", {}),
                                 merged_genpack_json.get("use", {}), 
                                 merged_genpack_json.get("license", {}), 
-                                merged_genpack_json.get("mask", []))
+                                merged_genpack_json.get("mask", []),
+                                merged_genpack_json.get("env", {}))
 
     # binpkg_excludes
     binpkg_excludes = merged_genpack_json.get("binpkg_excludes", [])
@@ -877,6 +915,7 @@ def create_archive():
     if os.path.isdir("savedconfig"): targets.append("savedconfig")
     if os.path.isdir("patches"): targets.append("patches")
     if os.path.isdir("kernel"): targets.append("kernel")
+    if os.path.isdir("env"): targets.append("env")
     if os.path.isdir("overlay"): targets.append("overlay")
 
     subprocess.run(["tar", "zcvf", archive_name] + targets, check=True)
@@ -956,7 +995,7 @@ if __name__ == "__main__":
         if not os.path.exists(variant.lower_files): return False
         #else
         lower_files_mtime = os.path.getmtime(variant.lower_files)
-        latest_mtime = get_latest_mtime(genpack_json_time, "savedconfig", "patches", "kernel", "overlay")
+        latest_mtime = get_latest_mtime(genpack_json_time, "savedconfig", "patches", "kernel", "env", "overlay")
         if lower_files_mtime < latest_mtime:
             logging.info(f"Lower files {variant.lower_files} is outdated, rebuilding lower layer.")
             return True
