@@ -7,7 +7,7 @@ import json5 # dev-python/json5
 import requests # dev-python/requests
 
 DEFAULT_LOWER_SIZE_IN_GIB = 24  # Default max size of lower image in GiB
-DEFAULT_UPPER_SIZE_IN_GIB = 12  # Default max size of upper image in GiB
+DEFAULT_UPPER_SIZE_IN_GIB = 20  # Default max size of upper image in GiB
 OVERLAY_SOURCE = "https://github.com/wbrxcorp/genpack-overlay.git"
 
 debug = False  # Set to True to enable debug output
@@ -149,7 +149,8 @@ def replace_portage(lower_image, portage_tarball):
     logging.info("Portage replaced successfully.")
 
 def sync_genpack_overlay(lower_image):
-    script = f"""if [ ! -d "/var/db/repos/genpack-overlay" ]; then
+    script = f"""set -e
+if [ ! -d "/var/db/repos/genpack-overlay" ]; then
     echo "Genpack overlay not found, cloning..."
     git clone {OVERLAY_SOURCE} /var/db/repos/genpack-overlay
 else
@@ -159,6 +160,7 @@ if [ ! -f "/etc/portage/repos.conf/genpack-overlay.conf" ]; then
     echo "Creating repos.conf for genpack-overlay"
     mkdir -p /etc/portage/repos.conf
     echo -e '[genpack-overlay]\nlocation=/var/db/repos/genpack-overlay' > /etc/portage/repos.conf/genpack-overlay.conf
+    sync # somehow genpack-overlay.conf vanishes without this sync
 fi
 if [ -f /var/db/repos/genpack-overlay/.git/ORIG_HEAD ]; then
     echo "GENPACK_OVERLAY_LAST_UPDATE: $(date -r /var/db/repos/genpack-overlay/.git/ORIG_HEAD +%s.%N)"
@@ -575,14 +577,14 @@ def lower(variant=None, devel=False):
     # merge main genpack.json
     merged_genpack_json = {}
     merge_genpack_json(merged_genpack_json, genpack_json, ["genpack.json"], 
-        ["profile","devel","packages","buildtime_packages",
+        ["profile","packages","buildtime_packages",
             "accept_keywords","use","mask","license","env","binpkg_excludes",
             "arch","variants"], variant)
 
     profile = genpack_json.get("profile", None)
     set_profile(variant.lower_image, profile)
 
-    devel = devel or merged_genpack_json.get("devel", False)
+    #devel = devel or merged_genpack_json.get("devel", False)
 
     apply_portage_sets_and_flags(variant.lower_image, 
                                 merged_genpack_json.get("packages", []),
