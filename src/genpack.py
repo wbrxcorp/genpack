@@ -168,7 +168,7 @@ elif [ -f /var/db/repos/genpack-overlay/.git/HEAD ]; then
     echo "GENPACK_OVERLAY_LAST_UPDATE: $(date -r /var/db/repos/genpack-overlay/.git/HEAD +%s.%N)"
 fi
 """
-    sync = subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True, capture_output=True)
+    sync = subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True, stdout=subprocess.PIPE)
     lines = sync.stdout.splitlines()
     for line in lines:
         if line.startswith("GENPACK_OVERLAY_LAST_UPDATE:"):
