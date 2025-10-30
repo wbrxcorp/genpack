@@ -268,6 +268,12 @@ struct NspawnOptions {
     std::optional<std::filesystem::path> extra_image;
 };
 
+static uint64_t phys_bytes(void){
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long page  = sysconf(_SC_PAGESIZE);
+    return (pages > 0 && page > 0) ? (uint64_t)pages * (uint64_t)page : 0;
+}
+
 int nspawn(const std::filesystem::path& lower_img,
     const std::vector<std::string>& cmdline,
     const NspawnOptions& options = {})
@@ -277,7 +283,6 @@ int nspawn(const std::filesystem::path& lower_img,
     std::vector<std::string> nspawn_cmdline = {
         "systemd-nspawn", "-q", "--suppress-sync=true", 
         "--as-pid2", "-M", "genpack-" + std::to_string(getpid()), "--image=" + lower_img.string(),
-        "--tmpfs=/var/tmp",
         "--capability=CAP_MKNOD,CAP_SYS_ADMIN,CAP_NET_ADMIN", // Portage's network sandbox needs CAP_NET_ADMIN
     };
     uid_t original_uid = getuid();
@@ -440,6 +445,9 @@ int main(int argc, const char* argv[])
                 // No arguments needed for ping command
             },
             [](const argparse::ArgumentParser& argparser) {
+                if (debug) {
+                    std::cout << "Physical memory bytes: " << phys_bytes() << std::endl;
+                }
                 return 0;
             }
         }},
@@ -601,6 +609,7 @@ int main(int argc, const char* argv[])
  
     if (subcommand_used == subcommands.end()) {
         std::cerr << "No subcommand specified. Use --help for usage information." << std::endl;
+        return 1;
     }
     //else
 
