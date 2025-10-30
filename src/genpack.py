@@ -6,7 +6,7 @@ from datetime import datetime
 import json5 # dev-python/json5
 import requests # dev-python/requests
 
-DEFAULT_LOWER_SIZE_IN_GIB = 24  # Default max size of lower image in GiB
+DEFAULT_LOWER_SIZE_IN_GIB = 128  # Default max size of lower image in GiB
 DEFAULT_UPPER_SIZE_IN_GIB = 20  # Default max size of upper image in GiB
 OVERLAY_SOURCE = "https://github.com/wbrxcorp/genpack-overlay.git"
 
@@ -807,7 +807,8 @@ if [ -d /mnt/host/files ]; then
     echo "Copying files from /mnt/host/files to upper image..."
     cp -rdv /mnt/host/files/. /
 fi
-execute-artifact-build-scripts"""
+execute-artifact-build-scripts
+touch /usr""" # see https://www.freedesktop.org/software/systemd/man/systemd-update-done.service.html
     subprocess.run(["genpack-helper", "nspawn", 
                     "-E", f"ARTIFACT={genpack_json['name']}", "--console=pipe", 
                     f"--download-dir={download_dir}",
