@@ -5,10 +5,12 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <grp.h>
+#include <dirent.h>
 
 #include <filesystem>
 #include <fstream>
 #include <cstring>
+#include <csignal>
 #include <functional>
 
 #include <libmount/libmount.h>
@@ -16,6 +18,38 @@
 #include <argparse/argparse.hpp>
 
 bool debug = false;
+
+static const int MAX_TMPDIRS = 16;
+static char* tmpdirs_to_cleanup[MAX_TMPDIRS];
+static int num_tmpdirs = 0;
+static char* tmpfile_to_cleanup = nullptr;
+
+static void signal_handler(int sig) {
+    // Only use async-signal-safe functions in signal handlers
+    if (tmpfile_to_cleanup) {
+        // Attempt to remove the temporary file (may fail if already removed)
+        unlink(tmpfile_to_cleanup);
+        free(tmpfile_to_cleanup);
+    }
+    for (int i = 0; i < num_tmpdirs; ++i) {
+        // Attempt to remove the directory (may fail if already removed, not empty or still mounted)
+        rmdir(tmpdirs_to_cleanup[i]);
+        free(tmpdirs_to_cleanup[i]);
+    }
+    _exit(128 + sig);
+}
+
+static void atexit_handler(void) {
+    // free() tmpfile_to_cleanup
+    if (tmpfile_to_cleanup) {
+        free(tmpfile_to_cleanup);
+    }
+    // free() all tmpdirs_to_cleanup
+    for (int i = 0; i < num_tmpdirs; ++i) {
+        // no necessity to remove dirs here, TempDir destructor should have done that
+        free(tmpdirs_to_cleanup[i]);
+    }
+}
 
 bool is_mounted(const std::filesystem::path& path)
 {
@@ -145,6 +179,10 @@ void mount_loop(const std::filesystem::path& source,
 class TempDir {
 public:
     TempDir() {
+        if (num_tmpdirs >= MAX_TMPDIRS) {
+            throw std::runtime_error("Exceeded maximum number of temporary directories");
+        }
+        //else
         // Create a temporary directory
         char temp_dir_template[] = "/tmp/genpack-helper.XXXXXX";
         if (mkdtemp(temp_dir_template) == nullptr) {
@@ -155,6 +193,7 @@ public:
             std::cout << "Temporary directory created: " << temp_dir_template << std::endl;
         }
         path_ = std::filesystem::path(temp_dir_template);
+        tmpdirs_to_cleanup[num_tmpdirs++] = strdup(temp_dir_template);
     }
 
     ~TempDir() {
@@ -345,6 +384,7 @@ int copy(const std::filesystem::path& src_img, const std::filesystem::path& dst_
     // create temporary file to hold the list of files to copy
     char temp_file_template[] = "/tmp/genpack-helper.XXXXXX";
     auto fd = mkstemp(temp_file_template);
+    tmpfile_to_cleanup = strdup(temp_file_template);
     if (fd < 0) {
         throw std::runtime_error("Failed to create temporary file for file list");
     }
@@ -626,6 +666,12 @@ int main(int argc, const char* argv[])
     const auto& name = subcommand_used->first;
     const auto& func = std::get<2>(subcommand_used->second);
     const auto& parser = std::get<0>(subcommand_used->second);
+
+    // register signal and atexit handlers
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
+    std::signal(SIGHUP, signal_handler);
+    std::atexit(atexit_handler);
 
     if (debug) {
         return func(parser);
