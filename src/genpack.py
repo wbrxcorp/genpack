@@ -1,7 +1,11 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-import os,logging,io,tarfile,subprocess,re,json,argparse,json,time,fcntl,struct
+import os,logging,io,tarfile,subprocess,re,json,argparse,json,time,fcntl,struct,errno
 from datetime import datetime
+from pathlib import Path
+from typing import Optional, Literal
+
+import fcntl  # Linux/Unix 専用
 
 import json5 # dev-python/json5
 import requests # dev-python/requests
@@ -20,6 +24,7 @@ cache_root = os.path.join(os.path.expanduser("~"), ".cache/genpack")
 cache_arch_dir = os.path.join(cache_root, arch)
 binpkgs_dir = os.path.join(cache_arch_dir, "binpkgs")
 download_dir = os.path.join(cache_root, "download")
+cache_overlay_dir = os.path.join(cache_root, "overlay")
 
 base_url = "http://ftp.iij.ad.jp/pub/linux/gentoo/"
 user_agent = "genpack/0.1"
@@ -37,6 +42,78 @@ class Variant:
         self.lower_image = os.path.join(work_dir, "lower.img") if self.name is None else os.path.join(work_dir, "lower-%s.img" % self.name)
         self.lower_files = os.path.join(work_dir, "lower.files") if self.name is None else os.path.join(work_dir, "lower-%s.files" % self.name)
         self.upper_image = os.path.join(work_dir, "upper.img") if self.name is None else os.path.join(work_dir, "upper-%s.img" % self.name)
+
+LockMode = Literal["shared", "exclusive"]
+
+class DirectoryLock:
+    """
+    ディレクトリを共有/排他でロックするコンテキストマネージャ。
+    Linux 前提。ロックは 'dir/.dirlock' (既定) に flock をかける。
+    """
+    def __init__(
+        self,
+        directory: os.PathLike | str,
+        *,
+        mode: LockMode = "exclusive",
+        lock_filename: str = ".dirlock",
+        timeout: Optional[float] = None,
+        poll_interval: float = 0.1,
+    ) -> None:
+        self.dir = Path(directory)
+        self.mode = mode
+        self.lock_path = self.dir / lock_filename
+        self.timeout = timeout
+        self.poll_interval = poll_interval
+        self._fd: Optional[int] = None
+        self._locked = False
+
+    def acquire(self) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        # 読み取り/書き込みどちらでも開けるように 'a+' を利用（ファイルを必ず作成）
+        fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        self._fd = fd
+
+        flag = fcntl.LOCK_EX if self.mode == "exclusive" else fcntl.LOCK_SH
+
+        if self.timeout is None:
+            # ブロッキングで待つ
+            fcntl.flock(fd, flag)
+            self._locked = True
+            return
+
+        # タイムアウトあり: ノンブロッキングでリトライ
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                fcntl.flock(fd, flag | fcntl.LOCK_NB)
+                self._locked = True
+                return
+            except OSError as e:
+                if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"Timeout while acquiring {self.mode} lock on {self.lock_path}"
+                        ) from None
+                    time.sleep(self.poll_interval)
+                else:
+                    raise
+
+    def release(self) -> None:
+        if self._locked and self._fd is not None:
+            try:
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self._fd)
+                self._fd = None
+                self._locked = False
+
+    # with 構文
+    def __enter__(self) -> "DirectoryLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.release()
 
 def url_readlines(url):
     """Read lines from a URL."""
@@ -809,10 +886,16 @@ if [ -d /mnt/host/files ]; then
 fi
 execute-artifact-build-scripts
 touch /usr""" # see https://www.freedesktop.org/software/systemd/man/systemd-update-done.service.html
+    nspawn_opts = [
+        "-E", f"ARTIFACT={genpack_json['name']}",
+        "--console=pipe", 
+        f"--download-dir={download_dir}",
+        f"--overlay-image={variant.upper_image}:upper", variant.lower_image,         
+    ]
+    if variant.name is not None:
+        nspawn_opts += ["-E", f"VARIANT={variant.name}"]
     subprocess.run(["genpack-helper", "nspawn", 
-                    "-E", f"ARTIFACT={genpack_json['name']}", "--console=pipe", 
-                    f"--download-dir={download_dir}",
-                    f"--overlay-image={variant.upper_image}:upper", variant.lower_image, "sh"], 
+                    *nspawn_opts, "sh"], 
                    input=script, text=True, check=True)
 
     if "setup_commands" in genpack_json:
