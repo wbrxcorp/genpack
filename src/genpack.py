@@ -695,13 +695,17 @@ def lower(variant=None, devel=False):
         if len(circulardep_breaker_packages) > 0:
             logging.info("Emerging circular dependency breaker packages...")
             circulardep_breaker_nspawn_opts = nspawn_opts.copy()
-            if circulardep_breaker_use is not None:
+            if circulardep_breaker_use:
+                logging.info(f"Setting circulardep_breaker USE flags to: {circulardep_breaker_use}")
                 circulardep_breaker_nspawn_opts.append(f"--setenv=USE={circulardep_breaker_use}")
+            else:
+                logging.warning("circulardep_breaker use is not set, proceeding without setting USE flags.")
             emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-u", "--keep-going"]
             if len(binpkg_excludes) > 0:
                 emerge_cmd += ["--usepkg-exclude", " ".join(binpkg_excludes)]
                 emerge_cmd += ["--buildpkg-exclude", " ".join(binpkg_excludes)]
             emerge_cmd += circulardep_breaker_packages
+            logging.debug(f"Circulardep breaker emerge command: {' '.join(emerge_cmd)}")
             subprocess.run(["genpack-helper", "nspawn"] + circulardep_breaker_nspawn_opts + [variant.lower_image] + emerge_cmd, check=True)
 
     logging.info("Emerging all packages...")
