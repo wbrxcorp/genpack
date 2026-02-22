@@ -229,7 +229,7 @@ private:
     std::filesystem::path path_;
 };
 
-int fork_and_exec(const std::vector<std::string>& cmdline, const std::optional<std::filesystem::path>& chroot = std::nullopt)
+int fork_and_exec(const std::vector<std::string>& cmdline)
 {
     pid_t pid = fork();
     if (pid < 0) {
@@ -239,16 +239,6 @@ int fork_and_exec(const std::vector<std::string>& cmdline, const std::optional<s
     // else
     if (pid == 0) {
         // Child process
-        if (chroot) {
-            if (chdir(chroot->c_str()) != 0) {
-                perror("chdir");
-                exit(EXIT_FAILURE); // Change directory failed
-            }
-            if (::chroot(chroot->c_str()) != 0) {
-                perror("chroot");
-                exit(EXIT_FAILURE); // Chroot failed
-            }
-        }
         std::vector<char*> args;
         for (const auto& arg : cmdline) {
             args.push_back(const_cast<char*>(arg.c_str()));
@@ -273,17 +263,6 @@ void stage3(const std::filesystem::path& lower_img, const std::filesystem::path&
     if (fork_and_exec(cmdline) != 0) {
         throw std::runtime_error("Failed to extract stage3 archive: " + archive_tar.string());
     }
-}
-
-int lower(const std::filesystem::path& lower_img, const std::vector<std::string>& cmdline)
-{
-    TempDir temp_dir;
-    mount_loop(lower_img, temp_dir.path(), "ext4");
-    if (debug) {
-        std::cout << "uid=" << getuid() << " euid=" << geteuid() << std::endl;
-    }
-    RealRootSection root_section; // Ensure we are running as root for the command execution
-    return fork_and_exec(cmdline, temp_dir.path());
 }
 
 std::string escape_colon(const std::filesystem::path& path) {
@@ -474,7 +453,6 @@ int main(int argc, const char* argv[])
 
     argparse::ArgumentParser ping("ping", "Check if the program is properly installed");
     argparse::ArgumentParser stage3("stage3", "Extract a stage3 archive into a lower image");
-    argparse::ArgumentParser lower("lower", "Execute a command in the lower image");
     argparse::ArgumentParser nspawn("nspawn", "Run a command in a lower image using systemd-nspawn");
     argparse::ArgumentParser copy("copy", "Copy files between two images according to filelist from stdin");
 
@@ -506,22 +484,6 @@ int main(int argc, const char* argv[])
                 auto archive_tar = argparser.get<std::string>("archive_tar");
                 ::stage3(lower_img, archive_tar);
                 return 0;
-            }
-        }},
-        {"lower", {
-            std::ref(lower),
-            [](argparse::ArgumentParser& argparser) {
-                argparser.add_argument("lower_img", "The lower image file to execute the command in.")
-                    .required()
-                    .help("Path to the formatted lower image file.");
-                argparser.add_argument("command", "The command to execute in the lower image.")
-                    .remaining()
-                    .help("Command to execute in the lower image.");
-            },
-            [](const argparse::ArgumentParser& argparser) {
-                auto lower_img = argparser.get<std::string>("lower_img");
-                auto cmdline = argparser.get<std::vector<std::string>>("command");
-                return ::lower(lower_img, cmdline);
             }
         }},
         {"nspawn", {

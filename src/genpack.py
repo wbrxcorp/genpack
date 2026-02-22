@@ -194,14 +194,14 @@ def setup_lower_image(lower_image, stage3_tarball, portage_tarball):
         logging.info("Extracting stage3 to lower image...")
         subprocess.run(["genpack-helper", "stage3", lower_image, stage3_tarball], check=True)
         logging.info("Extracting portage to lower image...")
-        subprocess.run(["genpack-helper", "lower", lower_image, "mkdir", "-p", "/var/db/repos/gentoo"], check=True)
+        subprocess.run(["genpack-helper", "nspawn", lower_image, "mkdir", "-p", "/var/db/repos/gentoo"], check=True)
         with open(portage_tarball, "rb") as f:
-            helper = subprocess.run(["genpack-helper", "lower", lower_image, "tar", "Jxpf", "-", "-C", "/var/db/repos/gentoo", "--strip-components=1"],
+            helper = subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "Jxpf", "-", "-C", "/var/db/repos/gentoo", "--strip-components=1"],
                                 stdin=f, check=True)
         logging.info("Portage extracted successfully.")
         # workaround for https://bugs.gentoo.org/734000
-        subprocess.run(["genpack-helper", "lower", lower_image, "chown", "portage", "/var/cache/distfiles"], check=True)
-        subprocess.run(["genpack-helper", "lower", lower_image, "chmod", "g+w", "/var/cache/distfiles"], check=True)
+        subprocess.run(["genpack-helper", "nspawn", lower_image, "chown", "portage", "/var/cache/distfiles"], check=True)
+        subprocess.run(["genpack-helper", "nspawn", lower_image, "chmod", "g+w", "/var/cache/distfiles"], check=True)
         # install git
         logging.info("Installing git in lower image...")
         nspawn_opts = [
@@ -220,9 +220,9 @@ def replace_portage(lower_image, portage_tarball):
     logging.info(f"Replacing portage in lower image: {lower_image}")
     #portage_dir = os.path.join(mount_point, "var/db/repos/gentoo")
     script = """[ -d /var/db/repos/gentoo ] && echo "Renaming existing portage directory" && mv /var/db/repos/gentoo /var/db/repos/gentoo.old-$(date +%Y%m%d-%H%M%S) && mkdir /var/db/repos/gentoo || true"""
-    subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+    subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
     with open(portage_tarball, "rb") as f:
-        subprocess.run(["genpack-helper", "lower", lower_image, "tar", "Jxpf", "-", "-C", "/var/db/repos/gentoo", "--strip-components=1"], stdin=f, text=False, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "Jxpf", "-", "-C", "/var/db/repos/gentoo", "--strip-components=1"], stdin=f, text=False, check=True)
     logging.info("Portage replaced successfully.")
 
 def sync_genpack_overlay(lower_image):
@@ -245,7 +245,7 @@ elif [ -f /var/db/repos/genpack-overlay/.git/HEAD ]; then
     echo "GENPACK_OVERLAY_LAST_UPDATE: $(date -r /var/db/repos/genpack-overlay/.git/HEAD +%s.%N)"
 fi
 """
-    sync = subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True, stdout=subprocess.PIPE)
+    sync = subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True, stdout=subprocess.PIPE)
     lines = sync.stdout.splitlines()
     for line in lines:
         if line.startswith("GENPACK_OVERLAY_LAST_UPDATE:"):
@@ -339,7 +339,7 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
             info.size = len(content)
             tar.addfile(tarinfo=info, fileobj=io.BytesIO(content))
     
-    subprocess.run(["genpack-helper", "lower", lower_image, "tar", "xf", "-"], input=tar_buf.getvalue(), check=True, text=False)
+    subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "xf", "-"], input=tar_buf.getvalue(), check=True, text=False)
 
     # apply savedconfig
     if os.path.isdir("savedconfig"):
@@ -347,7 +347,7 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/savedconfig", "/etc/portage"], check=True)
     else:
         script = """[ -d /etc/portage/savedconfig ] && echo "Removing existing savedconfig directory" && rm -rf /etc/portage/savedconfig || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
 
     # apply patches
     if os.path.isdir("patches"):
@@ -355,7 +355,7 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/patches", "/etc/portage"], check=True)
     else:
         script = """[ -d /etc/portage/patches ] && echo "Removing existing patches directory" && rm -rf /etc/portage/patches || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
         
     # apply kernel config
     if os.path.isdir("kernel"):
@@ -363,7 +363,7 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/kernel", "/etc/kernel"], check=True)  
     else:
         script = """[ -d /etc/kernel ] && echo "Removing existing kernel directory" && rm -rf /etc/kernel || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
 
     # apply env
     if os.path.isdir("env"):
@@ -371,21 +371,21 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/env", "/etc/portage"], check=True)
     else:
         script = """[ -d /etc/portage/env ] && echo "Removing existing env directory" && rm -rf /etc/portage/env || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
 
     # apply local overlay
     if os.path.isdir("overlay"):
         logging.info(f"Installing local overlay...")
         subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/overlay/", "/var/db/repos/genpack-local-overlay"], check=True)
         script = """[ ! -f /etc/portage/repos.conf/genpack-local-overlay.conf ] && echo "Creating repos.conf for genpack-local-overlay" && mkdir -p /etc/portage/repos.conf && echo -e '[genpack-local-overlay]\nlocation=/var/db/repos/genpack-local-overlay' > /etc/portage/repos.conf/genpack-local-overlay.conf || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
         script = """[ ! -f /var/db/repos/genpack-local-overlay/metadata/layout.conf ] && echo "Creating layout.conf for genpack-local-overlay" && mkdir -p /var/db/repos/genpack-local-overlay/metadata && echo -e 'masters = gentoo' > /var/db/repos/genpack-local-overlay/metadata/layout.conf || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
         script = """[ ! -f /var/db/repos/genpack-local-overlay/profiles/repo_name ] && echo "Creating repo_name for local overlay" && mkdir -p /var/db/repos/genpack-local-overlay/profiles && echo 'genpack-local-overlay' > /var/db/repos/genpack-local-overlay/profiles/repo_name || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
     else:
         script = """[ -f /etc/portage/repos.conf/genpack-local-overlay.conf ] && echo "Removing existing repos.conf for genpack-local-overlay" && rm -f /etc/portage/repos.conf/genpack-local-overlay.conf || true"""
-        subprocess.run(["genpack-helper", "lower", lower_image, "sh"], input=script, text=True, check=True)
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
 
 def set_profile(lower_image, profile_name):
     arch_map = {
@@ -744,7 +744,7 @@ def lower(variant=None, devel=False):
     lib64_exists = None
 
     # check if lib64 exists
-    lib64_exists = subprocess.check_call(["genpack-helper", "lower", variant.lower_image, "[" , "-d", "/lib64", "]"]) == 0
+    lib64_exists = subprocess.check_call(["genpack-helper", "nspawn", variant.lower_image, "[" , "-d", "/lib64", "]"]) == 0
     nspawn_opts = []
     if overlay_override is not None:
         nspawn_opts.append(f"--genpack-overlay-dir={overlay_override}")
@@ -1115,7 +1115,7 @@ if __name__ == "__main__":
         if lower_files_mtime < latest_mtime:
             logging.info(f"Lower files {variant.lower_files} is outdated, rebuilding lower layer.")
             return True
-        world_mtime = subprocess.run(["genpack-helper", "lower", variant.lower_image, "stat", "-c", "%Y", "/var/lib/portage/world"], capture_output=True, text=True)
+        world_mtime = subprocess.run(["genpack-helper", "nspawn", "--console=pipe", variant.lower_image, "stat", "-c", "%Y", "/var/lib/portage/world"], capture_output=True, text=True)
         if world_mtime.returncode != 0:
             logging.error("Failed to get world file mtime. rebuilding lower layer.")
             return True
