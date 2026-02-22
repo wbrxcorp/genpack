@@ -341,7 +341,7 @@ int nspawn(const std::filesystem::path& lower_img,
     }
     if (options.genpack_overlay_dir) {
         must_be_owned_by_original_user(*options.genpack_overlay_dir);
-        std::string bind = "--bind=" + escape_colon(*options.genpack_overlay_dir) + ":/var/db/repos/genpack-overlay";
+        std::string bind = "--bind-ro=" + escape_colon(*options.genpack_overlay_dir) + ":/var/db/repos/genpack-overlay";
         nspawn_cmdline.push_back(bind);
     }
     for (const auto& [key, value] : options.env_vars) {
