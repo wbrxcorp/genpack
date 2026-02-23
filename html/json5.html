@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack.json5 仕様リファレンス</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack.json5 仕様リファレンス" />
+<meta property="og:description" content="genpack でビルドするシステムイメージの宣言的な定義ファイル genpack.json5 の全フィールドを網羅した仕様リファレンス" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/json5.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack.json5 仕様リファレンス" />
+<meta name="twitter:description" content="genpack でビルドするシステムイメージの宣言的な定義ファイル genpack.json5 の全フィールドを網羅した仕様リファレンス" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="json5.en.html">English version</a></p>
+
+<h1>genpack.json5 仕様リファレンス</h1>
+
+<h2>概要</h2>
+
+<p><code>genpack.json5</code> は genpack でビルドするシステムイメージの宣言的な定義ファイルです。各アーティファクトのルートディレクトリに配置し、パッケージ構成、Portage の設定、ユーザー・サービス定義、圧縮方式などを 1 ファイルに集約します。</p>
+
+<p>フォーマットは <a href="https://json5.org/">JSON5</a> で、コメントや末尾カンマなどが使えます。<code>genpack.json5</code> が存在しない場合は <code>genpack.json</code> にフォールバックしますが、両方が存在するとエラーになります。</p>
+
+<h2>最小構成</h2>
+
+<pre><code class="language-json5">{
+  packages: ["genpack/paravirt"]
+}</code></pre>
+
+<p><code>name</code> を省略するとディレクトリ名が自動的に使用されます（警告が出ます）。</p>
+
+<h2>フィールド一覧</h2>
+
+<h3>基本フィールド</h3>
+
+<h4>name</h4>
+
+<ul>
+<li><strong>型</strong>: string</li>
+<li><strong>デフォルト</strong>: カレントディレクトリのベースネーム</li>
+<li><strong>説明</strong>: アーティファクトの名前。ビルド時に環境変数 <code>ARTIFACT</code> として scripts に渡され、出力ファイル名のデフォルトにも使われます。</li>
+</ul>
+
+<h4>profile</h4>
+
+<ul>
+<li><strong>型</strong>: string | null</li>
+<li><strong>デフォルト</strong>: null</li>
+<li><strong>説明</strong>: genpack-overlay のプロファイル名。内部的に <code>genpack-overlay:genpack/{arch}/</code> に連結されて Portage プロファイルとして設定されます。</li>
+</ul>
+
+<p>代表的なプロファイル:</p>
+
+<table>
+<thead>
+<tr><th>プロファイル</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>paravirt</code></td><td>QEMU/KVM 仮想マシン向け（virtio, ゲストエージェント）</td></tr>
+<tr><td><code>baremetal</code></td><td>物理マシン向け（BIOS/UEFI, デバイスドライバ）</td></tr>
+<tr><td><code>gnome/baremetal</code></td><td>物理マシン + GNOME デスクトップ</td></tr>
+<tr><td><code>weston/paravirt</code></td><td>仮想マシン + Wayland (Weston)</td></tr>
+</tbody>
+</table>
+
+<h4>outfile</h4>
+
+<ul>
+<li><strong>型</strong>: string</li>
+<li><strong>デフォルト</strong>: <code>{name}-{arch}.squashfs</code></li>
+<li><strong>説明</strong>: 出力ファイル名。CLI の <code>--outfile</code> 引数でも上書き可能です。</li>
+</ul>
+
+<h4>compression</h4>
+
+<ul>
+<li><strong>型</strong>: string</li>
+<li><strong>デフォルト</strong>: <code>"gzip"</code></li>
+<li><strong>許容値</strong>: <code>"gzip"</code>, <code>"xz"</code>, <code>"lzo"</code>, <code>"none"</code></li>
+<li><strong>説明</strong>: SquashFS 圧縮アルゴリズム。<code>"xz"</code> はサイズが最小になりますが圧縮に時間がかかります。CLI の <code>--compression</code> 引数でも上書き可能です。</li>
+</ul>
+
+<h3>パッケージ関連</h3>
+
+<h4>packages</h4>
+
+<ul>
+<li><strong>型</strong>: string[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: インストールするパッケージのリスト。Gentoo のパッケージアトム形式 (<code>category/name</code>) で指定します。</li>
+</ul>
+
+<p><code>-</code> プレフィックスを付けると、プロファイルやバリアントのマージ時にリストから除外できます:</p>
+
+<pre><code class="language-json5">{
+  packages: [
+    "genpack/paravirt",
+    "app-misc/screen",
+    "-app-misc/unwanted-package"  // マージ元から除外
+  ]
+}</code></pre>
+
+<h4>buildtime_packages</h4>
+
+<ul>
+<li><strong>型</strong>: string[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: ビルド時のみ必要なパッケージ。Lower 層にはインストールされますが、Upper 層（最終イメージ）にはコピーされません。Go や CMake など、コンパイルに必要だが実行時には不要なパッケージに使います。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  buildtime_packages: ["dev-lang/go", "dev-build/cmake"]
+}</code></pre>
+
+<h4>binpkg_excludes</h4>
+
+<ul>
+<li><strong>型</strong>: string | string[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: バイナリパッケージキャッシュ (usepkg/buildpkg) から除外するパッケージ。カーネルなど、設定が異なるためバイナリキャッシュの共有が不適切なパッケージに使います。</li>
+</ul>
+
+<h3>Portage 設定</h3>
+
+<h4>use</h4>
+
+<ul>
+<li><strong>型</strong>: object</li>
+<li><strong>デフォルト</strong>: <code>{}</code></li>
+<li><strong>説明</strong>: パッケージ別の USE フラグ設定。<code>package.use</code> に相当します。</li>
+</ul>
+
+<p>キーはパッケージアトム（<code>*/*</code> でグローバル指定可）、値は文字列（スペース区切り）またはリストです:</p>
+
+<pre><code class="language-json5">{
+  use: {
+    "dev-lang/php": "+mysql +curl +gd +xml +zip",
+    "media-libs/mesa": "wayland VIDEO_CARDS: virgl",
+    "*/*": "python_targets_python3_12"
+  }
+}</code></pre>
+
+<p><code>CPU_FLAGS_X86:</code>, <code>VIDEO_CARDS:</code>, <code>AMDGPU_TARGETS:</code>, <code>APACHE2_MODULES:</code> などの USE_EXPAND 変数もこのフィールドで設定します。</p>
+
+<h4>accept_keywords</h4>
+
+<ul>
+<li><strong>型</strong>: object</li>
+<li><strong>デフォルト</strong>: <code>{}</code></li>
+<li><strong>説明</strong>: パッケージ別の ACCEPT_KEYWORDS 設定。<code>package.accept_keywords</code> に相当します。</li>
+</ul>
+
+<p>値が <code>null</code> の場合はキーワードなし（テスティング版を受け入れる標準的なパターン）:</p>
+
+<pre><code class="language-json5">{
+  accept_keywords: {
+    "dev-util/debootstrap": null,      // ~arch を受け入れ
+    "app-misc/package": "~amd64",      // 特定キーワード
+    "app-misc/other": ["~amd64", "**"] // 複数キーワード
+  }
+}</code></pre>
+
+<h4>mask</h4>
+
+<ul>
+<li><strong>型</strong>: string[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: パッケージマスク。<code>package.mask</code> に相当します。特定バージョン以上をブロックするなどの用途に使います。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  mask: [">=dev-db/mysql-8"]
+}</code></pre>
+
+<h4>license</h4>
+
+<ul>
+<li><strong>型</strong>: object</li>
+<li><strong>デフォルト</strong>: <code>{}</code></li>
+<li><strong>説明</strong>: パッケージ別のライセンス受け入れ設定。<code>package.license</code> に相当します。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  license: {
+    "sys-kernel/linux-firmware": "linux-fw-redistributable",
+    "www-client/google-chrome": "google-chrome"
+  }
+}</code></pre>
+
+<h4>env</h4>
+
+<ul>
+<li><strong>型</strong>: object</li>
+<li><strong>デフォルト</strong>: <code>{}</code></li>
+<li><strong>説明</strong>: パッケージ別の環境設定。<code>package.env</code> に相当します。Portage の <code>env/</code> ディレクトリ内の設定ファイル名を指定します。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  env: {
+    "sci-libs/pytorch": "torch_cuda.conf"
+  }
+}</code></pre>
+
+<h3>ユーザーとグループ</h3>
+
+<h4>users</h4>
+
+<ul>
+<li><strong>型</strong>: (string | object)[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: Upper 層で作成するユーザー。文字列（ユーザー名のみ）またはオブジェクトで指定します。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  users: [
+    "simpleuser",
+    {
+      name: "advanceduser",
+      uid: 1000,
+      home: "/home/advanceduser",
+      shell: "/bin/bash",
+      initial_group: "users",
+      additional_groups: ["wheel", "video", "audio"],
+      create_home: true,
+      empty_password: true
+    }
+  ]
+}</code></pre>
+
+<p>オブジェクト形式のプロパティ:</p>
+
+<table>
+<thead>
+<tr><th>プロパティ</th><th>型</th><th>デフォルト</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>(必須)</td><td>ユーザー名</td></tr>
+<tr><td><code>uid</code></td><td>integer</td><td>(自動)</td><td>ユーザー ID</td></tr>
+<tr><td><code>comment</code></td><td>string</td><td></td><td>GECOS フィールド</td></tr>
+<tr><td><code>home</code></td><td>string</td><td></td><td>ホームディレクトリ</td></tr>
+<tr><td><code>shell</code></td><td>string</td><td></td><td>ログインシェル</td></tr>
+<tr><td><code>initial_group</code></td><td>string</td><td></td><td>プライマリグループ</td></tr>
+<tr><td><code>additional_groups</code></td><td>string | string[]</td><td></td><td>追加グループ</td></tr>
+<tr><td><code>create_home</code></td><td>boolean</td><td>true</td><td>ホームディレクトリを作成するか</td></tr>
+<tr><td><code>empty_password</code></td><td>boolean</td><td>false</td><td>空パスワードを許可するか</td></tr>
+</tbody>
+</table>
+
+<h4>groups</h4>
+
+<ul>
+<li><strong>型</strong>: (string | object)[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: Upper 層で作成するグループ。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  groups: [
+    "customgroup",
+    { name: "groupwithgid", gid: 1002 }
+  ]
+}</code></pre>
+
+<h3>サービスとセットアップ</h3>
+
+<h4>services</h4>
+
+<ul>
+<li><strong>型</strong>: string[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: 有効化する systemd サービス。テンプレートユニットやタイマーユニットも指定可能です。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  services: [
+    "sshd",
+    "apache2",
+    "fstrim.timer",
+    "vsock-proxy@80.socket"
+  ]
+}</code></pre>
+
+<h4>setup_commands</h4>
+
+<ul>
+<li><strong>型</strong>: string[]</li>
+<li><strong>デフォルト</strong>: <code>[]</code></li>
+<li><strong>説明</strong>: Upper 層の構築後に nspawn コンテナ内で実行されるシェルコマンド。ファイルの編集、権限の変更など、パッケージインストールやファイルコピーだけでは対応できないカスタマイズに使います。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  setup_commands: [
+    "sed -i 's/-D SSL //' /etc/conf.d/apache2",
+    "mkdir -p /var/www/localhost/htdocs"
+  ]
+}</code></pre>
+
+<h3>ビルド設定</h3>
+
+<h4>lower-layer-capacity</h4>
+
+<ul>
+<li><strong>型</strong>: integer (GiB 単位)</li>
+<li><strong>デフォルト</strong>: 128</li>
+<li><strong>説明</strong>: Lower 層のディスクイメージサイズ（GiB）。パッケージ数が非常に多い場合に増やします。</li>
+</ul>
+
+<h4>independent_binpkgs</h4>
+
+<ul>
+<li><strong>型</strong>: boolean</li>
+<li><strong>デフォルト</strong>: false</li>
+<li><strong>説明</strong>: 共有バイナリパッケージキャッシュの代わりに、アーティファクト固有のバイナリパッケージを使用するかどうか。CLI の <code>--independent-binpkgs</code> でも指定可能です。</li>
+</ul>
+
+<h4>circulardep_breaker</h4>
+
+<ul>
+<li><strong>型</strong>: object</li>
+<li><strong>デフォルト</strong>: (なし)</li>
+<li><strong>説明</strong>: Gentoo の循環依存を解決するための特殊設定。一部のパッケージ（freetype &#x2194; harfbuzz など）は互いに依存しているため、最初に制限された USE フラグでインストールしてから通常ビルドを行います。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  circulardep_breaker: {
+    packages: ["media-libs/freetype", "media-libs/harfbuzz"],
+    use: "-truetype -harfbuzz"
+  }
+}</code></pre>
+
+<p><code>packages</code> に指定したパッケージが <code>use</code> で指定した USE フラグ付きで先にインストールされ、その後の通常ビルドで正しいフラグで再ビルドされます。</p>
+
+<h3>条件付き設定</h3>
+
+<h4>arch</h4>
+
+<ul>
+<li><strong>型</strong>: object</li>
+<li><strong>デフォルト</strong>: <code>{}</code></li>
+<li><strong>説明</strong>: アーキテクチャ固有の設定オーバーライド。キーはアーキテクチャ名（<code>|</code> で複数指定可）、値はマージされるフィールドのオブジェクトです。</li>
+</ul>
+
+<p>現在のマシンのアーキテクチャ (<code>uname -m</code>) と一致するキーの設定のみがマージされます。</p>
+
+<pre><code class="language-json5">{
+  arch: {
+    x86_64: {
+      packages: ["app-misc/x86-specific"],
+      use: {
+        "media-video/ffmpeg": "CPU_FLAGS_X86: avx avx2 sse4_2"
+      }
+    },
+    aarch64: {
+      accept_keywords: {
+        "app-emulation/qemu-guest-agent": null
+      }
+    }
+  }
+}</code></pre>
+
+<p>マージ可能なフィールド: <code>packages</code>, <code>buildtime_packages</code>, <code>accept_keywords</code>, <code>use</code>, <code>mask</code>, <code>license</code>, <code>env</code>, <code>binpkg_excludes</code>, <code>setup_commands</code>, <code>services</code></p>
+
+<h4>variants</h4>
+
+<ul>
+<li><strong>型</strong>: object</li>
+<li><strong>デフォルト</strong>: <code>{}</code></li>
+<li><strong>説明</strong>: 名前付きバリアント設定。同一アーティファクトから異なる構成のイメージを生成するために使います。CLI の <code>--variant</code> 引数で選択します。</li>
+</ul>
+
+<pre><code class="language-json5">{
+  packages: ["genpack/gnome"],
+  services: ["gdm"],
+  variants: {
+    paravirt: {
+      // packages は上位定義とマージされる
+      packages: ["-x11-drivers/nvidia-drivers"],
+      use: {
+        "media-libs/mesa": "VIDEO_CARDS: virgl"
+      }
+    },
+    cuda: {
+      packages: ["x11-drivers/nvidia-drivers"],
+      use: {
+        "sci-libs/pytorch": "CUDA_TARGETS: sm_89"
+      }
+    }
+  }
+}</code></pre>
+
+<p>バリアント内では <code>name</code>, <code>profile</code>, <code>outfile</code> を含む大半のトップレベルフィールドをオーバーライドまたはマージできます。さらにバリアント内に <code>arch</code> を含めることもできます。</p>
+
+<h4>default_variant</h4>
+
+<ul>
+<li><strong>型</strong>: string | null</li>
+<li><strong>デフォルト</strong>: null</li>
+<li><strong>説明</strong>: CLI で <code>--variant</code> を指定しなかった場合に使用されるデフォルトバリアント名。指定されたバリアントが <code>variants</code> に存在しない場合はエラーになります。</li>
+</ul>
+
+<h2>マージの仕組み</h2>
+
+<p>genpack.json5 の設定は以下の順序でマージされます:</p>
+
+<ol>
+<li><strong>ベース設定</strong>: トップレベルのフィールド</li>
+<li><strong>アーキテクチャ固有</strong>: <code>arch</code> 内の該当アーキテクチャの設定をマージ</li>
+<li><strong>バリアント</strong>: <code>variants</code> 内の選択されたバリアントの設定をマージ（バリアント内の <code>arch</code> も処理される）</li>
+</ol>
+
+<p>マージ時のリスト型フィールドの動作:</p>
+
+<ul>
+<li><code>packages</code>: <code>-</code> プレフィックス付きの要素は既存リストから除外。それ以外は重複なく追加</li>
+<li><code>buildtime_packages</code>, <code>mask</code>, <code>services</code>: 重複なく追加</li>
+<li><code>accept_keywords</code>, <code>use</code>, <code>license</code>, <code>env</code>: キー単位で上書き</li>
+</ul>
+
+<h2>非推奨フィールド名</h2>
+
+<p>以下のハイフン区切りの名前は非推奨で、使用するとエラーになります:</p>
+
+<table>
+<thead>
+<tr><th>非推奨名</th><th>現行の名前</th></tr>
+</thead>
+<tbody>
+<tr><td><code>buildtime-packages</code></td><td><code>buildtime_packages</code></td></tr>
+<tr><td><code>binpkg-exclude</code></td><td><code>binpkg_excludes</code></td></tr>
+<tr><td><code>circulardep-breaker</code></td><td><code>circulardep_breaker</code></td></tr>
+</tbody>
+</table>
+
+<p>ユーザーオブジェクト内では互換性のためハイフン区切りも受け付けます:</p>
+
+<ul>
+<li><code>create-home</code> → <code>create_home</code></li>
+<li><code>initial-group</code> → <code>initial_group</code></li>
+<li><code>additional-groups</code> → <code>additional_groups</code></li>
+<li><code>empty-password</code> → <code>empty_password</code></li>
+</ul>
+
+<h2>完全な構成例</h2>
+
+<pre><code class="language-json5">{
+  // 基本情報
+  name: "nextcloud",
+  profile: "paravirt",
+  compression: "xz",
+
+  // パッケージ
+  packages: [
+    "genpack/paravirt",
+    "www-apps/nextcloud",
+    "dev-db/mysql",
+    "dev-lang/php",
+    "net-misc/redis",
+    "www-servers/apache"
+  ],
+  buildtime_packages: [
+    "app-arch/rpm2targz"
+  ],
+  binpkg_excludes: ["sys-kernel/gentoo-kernel"],
+
+  // Portage 設定
+  use: {
+    "dev-lang/php": "mysql curl gd xml zip",
+    "www-servers/apache": "APACHE2_MODULES: http2 proxy proxy_fcgi"
+  },
+  accept_keywords: {
+    "net-vpn/frp": null
+  },
+  license: {
+    "net-analyzer/fping": "fping",
+    "dev-db/redis": "SSPL-1"
+  },
+
+  // ユーザーとサービス
+  users: [
+    { name: "nextcloud", uid: 1000 }
+  ],
+  services: ["apache2", "mysqld", "redis"],
+
+  // セットアップ
+  setup_commands: [
+    "sed -i 's/-D SSL //' /etc/conf.d/apache2"
+  ],
+
+  // バリアント
+  variants: {
+    selftestable: {
+      profile: "weston/paravirt",
+      packages: ["www-client/google-chrome"],
+      users: [
+        { name: "user", uid: 1000, empty_password: true }
+      ]
+    }
+  }
+}</code></pre>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

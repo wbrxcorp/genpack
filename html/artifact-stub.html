@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー" />
+<meta property="og:description" content="genpack ツールチェーンで構築される、他の Linux ディストリビューションを QEMU/KVM 仮想マシン上にインストールするための使い捨てブート環境" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/artifact-stub.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー" />
+<meta name="twitter:description" content="genpack ツールチェーンで構築される、他の Linux ディストリビューションを QEMU/KVM 仮想マシン上にインストールするための使い捨てブート環境" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="artifact-stub.en.html">English version</a></p>
+
+<h1>stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</h1>
+
+<p><a href="https://github.com/genpack-artifacts/stub">GitHub: genpack-artifacts/stub</a></p>
+
+<h2>概要</h2>
+
+<p>stub は genpack ツールチェーンで構築されるアーティファクトの一つで、<strong>他の Linux ディストリビューションを QEMU/KVM 仮想マシン上にインストールするための使い捨てブート環境</strong>です。</p>
+
+<p>genpack イメージとして動作しつつも、最終的な目的は genpack 以外の OS を立ち上げることにあります。初回起動時はインストーラとして、2 回目以降は kexec を使ったブートローダーとして振る舞う、二段階構成のプロビジョニングツールです。</p>
+
+<h2>使い方</h2>
+
+<p><a href="https://github.com/shimarin/vm">vm</a> コマンドと組み合わせて使用します。</p>
+
+<pre><code class="language-bash"># 1. データ用仮想ディスクを作成 (8GiB)
+vm allocate debian12.img 8
+
+# 2. stub をシステムイメージ、debian12.img をデータディスクとして VM 起動
+vm run -d debian12.img stub-$(uname -m).squashfs
+
+# 3. VM 内で自動ログイン後、目的のディストリビューションのスクリプトを実行
+./debian12.sh
+
+# 4. インストール完了後に reboot → 以降は Debian 12 が直接起動する</code></pre>
+
+<h2>動作の流れ</h2>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">stub 起動</span> <span class="desc">(genpack イメージ、コンソール自動ログイン)</span>
+<ul>
+<li><span class="desc">/root/ 以下にディストリビューションインストールスクリプトが用意されている</span></li>
+<li><span class="label">ユーザーがスクリプトを実行</span>
+<ol>
+<li>/dev/vdb (データ用仮想ディスク) にファイルシステム作成</li>
+<li>debootstrap / rpmbootstrap でディストリビューションをブートストラップ</li>
+<li>SSH, ネットワーク, ホスト名, ロケール等を設定</li>
+<li>dracut で initramfs 生成</li>
+<li>reboot</li>
+</ol></li>
+<li><span class="label">次回起動時:</span> <span class="desc">genpack-init の kexec プラグイン (00kexec.py)</span><br>
+<span class="desc">データディスク上のカーネルを検出 → kexec でインストール済み OS のカーネルに直接遷移 → stub は役目を終え、以降はインストールした OS が起動</span></li>
+</ul></li>
+</ul>
+</div>
+
+<h2>対応ディストリビューション</h2>
+
+<h3>Debian / Ubuntu 系 (debootstrap 使用)</h3>
+
+<table>
+<thead>
+<tr><th>スクリプト</th><th>ディストリビューション</th></tr>
+</thead>
+<tbody>
+<tr><td><code>debian12.sh</code></td><td>Debian 12 (Bookworm)</td></tr>
+<tr><td><code>debian13.sh</code></td><td>Debian 13 (Trixie)</td></tr>
+<tr><td><code>ubuntu2004.sh</code></td><td>Ubuntu 20.04 (Focal)</td></tr>
+<tr><td><code>ubuntu2204.sh</code></td><td>Ubuntu 22.04 (Jammy)</td></tr>
+<tr><td><code>ubuntu2404.sh</code></td><td>Ubuntu 24.04 (Noble)</td></tr>
+<tr><td><code>ubuntu2604.sh</code></td><td>Ubuntu 26.04 (Resolute)</td></tr>
+</tbody>
+</table>
+
+<h3>RHEL / RPM 系 (rpmbootstrap 使用)</h3>
+
+<table>
+<thead>
+<tr><th>スクリプト</th><th>ディストリビューション</th></tr>
+</thead>
+<tbody>
+<tr><td><code>centos6.sh</code></td><td>CentOS 6</td></tr>
+<tr><td><code>centos7.sh</code></td><td>CentOS 7</td></tr>
+<tr><td><code>centos8stream.sh</code></td><td>CentOS Stream 8</td></tr>
+<tr><td><code>centos9stream.sh</code></td><td>CentOS Stream 9</td></tr>
+<tr><td><code>centos10stream.sh</code></td><td>CentOS Stream 10</td></tr>
+<tr><td><code>almalinux9.sh</code></td><td>AlmaLinux 9</td></tr>
+<tr><td><code>rocky8.sh</code></td><td>Rocky Linux 8</td></tr>
+<tr><td><code>miraclelinux8.sh</code></td><td>MIRACLE LINUX 8</td></tr>
+<tr><td><code>fedora42.sh</code></td><td>Fedora 42</td></tr>
+</tbody>
+</table>
+
+<h3>その他</h3>
+
+<table>
+<thead>
+<tr><th>スクリプト</th><th>ディストリビューション</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gentoo.sh</code></td><td>Gentoo Linux (stage3 tarball から構築)</td></tr>
+</tbody>
+</table>
+
+<h2>主要コンポーネント</h2>
+
+<h3>kexec ブートプラグイン (<code>files/usr/lib/genpack-init/00kexec.py</code>)</h3>
+
+<p>genpack-init のプラグインとして毎回起動時に実行される Python スクリプトです。データディスク (<code>/dev/vdb</code>) または virtiofs 上にインストール済み OS のカーネルと initramfs が存在するかを検出し、見つかった場合は kexec でそのカーネルをロードして遷移します。</p>
+
+<p>これにより、stub は初回のインストール作業後は透過的なブートローダーとして機能し、VM の起動フローは以下のようになります:</p>
+
+<div class="boot-flow">
+<span class="stage">QEMU 起動</span><span class="arrow">→</span>
+<span class="stage">stub カーネル</span><span class="arrow">→</span>
+<span class="stage">genpack-init</span><span class="arrow">→</span>
+<span class="stage">kexec</span><span class="arrow">→</span>
+<span class="stage">インストール済み OS カーネル</span><span class="arrow">→</span>
+<span class="stage">OS 起動</span>
+</div>
+
+<h3>ディストリビューションインストールスクリプト (<code>files/root/*.sh</code>)</h3>
+
+<p>各スクリプトは以下の共通パターンに従います:</p>
+
+<ol>
+<li><code>systemd-networkd-wait-online</code> でネットワーク接続を待機</li>
+<li>データディスクにファイルシステムを作成 (XFS / Btrfs)</li>
+<li><code>debootstrap</code> または <code>rpmbootstrap</code> でベースシステムをブートストラップ</li>
+<li>ホスト名、ネットワーク、SSH、タイムゾーンを設定</li>
+<li>SSH 公開鍵、LLMNRD (Link-Local Name Resolution)、QEMU ゲストエージェントを配置</li>
+<li>dracut で initramfs を生成 (virtiofs / 暗号化サポート含む)</li>
+<li>reboot</li>
+</ol>
+
+<p>インストール直後から SSH によるリモート管理が可能な状態になります。</p>
+
+<h3>自動ログイン (<code>files/build.d/autologin.sh</code>)</h3>
+
+<p>hvc0 (virtio コンソール) と ttyS0 (シリアルコンソール) の両方で root の自動ログインを設定します。<code>vm console</code> でコンソール接続すると、ログインプロンプトなしで即座にシェルが使えます。</p>
+
+<h3>LLMNRD (<code>files/build.d/build-llmnrd.sh</code>)</h3>
+
+<p>Link-Local Multicast Name Resolution Daemon をソースからスタティックビルドします。インストール先の OS に配置され、DNS サーバーなしでのホスト名解決を可能にします。</p>
+
+<h2>含まれるパッケージ</h2>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/paravirt</code></td><td>準仮想化カーネルとベースシステム</td></tr>
+<tr><td><code>sys-kernel/gentoo-kernel</code></td><td>ソースからビルドされた最小カーネル</td></tr>
+<tr><td><code>sys-apps/kexec-tools</code></td><td>OS カーネルへの遷移に使用</td></tr>
+<tr><td><code>dev-util/debootstrap</code></td><td>Debian / Ubuntu 系のブートストラップ</td></tr>
+<tr><td><code>dev-util/rpmbootstrap</code></td><td>RPM 系のブートストラップ</td></tr>
+<tr><td><code>sys-fs/cryptsetup</code></td><td>ディスク暗号化サポート</td></tr>
+<tr><td><code>sys-devel/binutils</code></td><td>バイナリユーティリティ</td></tr>
+</tbody>
+</table>
+
+<h2>カーネル最小化</h2>
+
+<p>stub は使い捨てのブート環境であり広範なハードウェアサポートが不要なため、<code>kernel/config.d/unset.config</code> で 1,757 のカーネルオプションを無効化しています。</p>
+
+<p>無効化される主な機能:</p>
+
+<ul>
+<li>Hibernation / Suspend / 電源管理</li>
+<li>XEN / NUMA / SGX / EFI の大部分</li>
+<li>デバッグ、プロファイリング、トレーシング機能全般</li>
+<li>不要なカーネル圧縮アルゴリズム</li>
+<li>カーネル署名検証 (<code>KEXEC_SIG</code> — kexec の柔軟性のために無効化)</li>
+</ul>
+
+<h2>対応アーキテクチャ</h2>
+
+<table>
+<thead>
+<tr><th>アーキテクチャ</th><th>カーネル設定</th><th>出力ファイル</th></tr>
+</thead>
+<tbody>
+<tr><td>x86_64</td><td>unset.config のみ</td><td><code>stub-x86_64.squashfs</code></td></tr>
+<tr><td>aarch64</td><td>savedconfig + unset.config</td><td><code>stub-aarch64.squashfs</code></td></tr>
+<tr><td>riscv64</td><td>savedconfig + unset.config</td><td><code>stub-riscv64.squashfs</code></td></tr>
+</tbody>
+</table>
+
+<h2>設計上の位置づけ</h2>
+
+<p>stub は genpack エコシステムの中では異色の存在です。genpack イメージとして構築・起動されますが、目的は genpack 以外の OS を立ち上げることにあります。genpack-init のプラグイン機構 (pybind11 + Python) と vm コマンドの仮想ディスク管理を活用し、QEMU/KVM 環境で多数の異なるディストリビューションの VM を共通の手順でプロビジョニングする統一的な環境を提供しています。</p>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+<ul>
+<li><a href="https://github.com/genpack-artifacts/stub/tree/b2aa5c3e07173fcea3247b5c3aeddb5afe2d273f">genpack-artifacts/stub @ b2aa5c3</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

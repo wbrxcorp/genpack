@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack CLI Reference</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack CLI Reference" />
+<meta property="og:description" content="Complete reference of genpack subcommands and options" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/cli.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack CLI Reference" />
+<meta name="twitter:description" content="Complete reference of genpack subcommands and options" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<h1>genpack CLI Reference</h1>
+
+<h2>Overview</h2>
+
+<p><code>genpack</code> is the main command of the genpack toolchain. It reads <code>genpack.json5</code> (or <code>genpack.json</code>) in the current directory and executes processing according to the subcommand.</p>
+
+<pre><code>genpack [global options] &lt;subcommand&gt;</code></pre>
+
+<h2>Global Options</h2>
+
+<p>Options common to all subcommands.</p>
+
+<table>
+<thead>
+<tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--debug</code></td><td>Flag</td><td>false</td><td>Display DEBUG level logs</td></tr>
+<tr><td><code>--overlay-override &lt;DIR&gt;</code></td><td>Path</td><td>(none)</td><td>Local override directory for genpack-overlay</td></tr>
+<tr><td><code>--independent-binpkgs</code></td><td>Flag</td><td>false</td><td>Use artifact-specific binary package cache</td></tr>
+<tr><td><code>--deep-depclean</code></td><td>Flag</td><td>false</td><td>Perform deep cleanup including build dependencies</td></tr>
+<tr><td><code>--compression &lt;ALG&gt;</code></td><td>Choice</td><td>(follows config)</td><td>SquashFS compression: <code>gzip</code>, <code>xz</code>, <code>lzo</code>, <code>none</code></td></tr>
+<tr><td><code>--devel</code></td><td>Flag</td><td>false</td><td>Generate development image</td></tr>
+<tr><td><code>--variant &lt;NAME&gt;</code></td><td>String</td><td>(follows config)</td><td>Variant name to use</td></tr>
+</tbody>
+</table>
+
+<h3>--overlay-override</h3>
+
+<p>Overrides the genpack-overlay repository (normally auto-fetched from GitHub) with a local directory. Used when developing genpack-overlay itself.</p>
+
+<h3>--independent-binpkgs</h3>
+
+<p>By default, a shared binary package cache at <code>~/.cache/genpack/{arch}/binpkgs/</code> is used, but specifying this option uses an independent cache per artifact. Use this to avoid interference between artifacts with significantly different USE flags.</p>
+
+<h2>Subcommands</h2>
+
+<h3>build</h3>
+
+<p>Executes the full build pipeline (lower &rarr; upper &rarr; pack).</p>
+
+<pre><code>genpack build</code></pre>
+
+<p>This is the default behavior when the subcommand is omitted. Executes the following 3 phases in order:</p>
+
+<ol>
+<li><strong>Lower layer build</strong>: Compile packages with stage3 + Portage</li>
+<li><strong>Upper layer build</strong>: Extract and customize runtime files</li>
+<li><strong>Pack</strong>: SquashFS compression</li>
+</ol>
+
+<p>On first run, automatically generates <code>.gitignore</code> and <code>.vscode/settings.json</code> if they don't exist.</p>
+
+<h3>lower</h3>
+
+<p>Builds the lower layer (build environment).</p>
+
+<pre><code>genpack lower</code></pre>
+
+<p>Processing flow:</p>
+
+<ol>
+<li>Create <code>work/{arch}/</code> directory</li>
+<li>Download Gentoo stage3 tarball (with caching)</li>
+<li>Download Portage snapshot (with caching)</li>
+<li>Create ext4 filesystem image (<code>lower.img</code>)</li>
+<li>Extract stage3 and Portage</li>
+<li>Sync genpack-overlay</li>
+<li>Configure Portage profile</li>
+<li>Apply settings from <code>genpack.json5</code> (USE flags, keywords, licenses, masks)</li>
+<li>Resolve circular dependencies (if <code>circulardep_breaker</code> exists)</li>
+<li>Emerge all packages</li>
+<li>Rebuild kernel modules</li>
+<li>Cleanup with depclean and eclean</li>
+<li>Generate file list for upper layer (<code>lower.files</code>)</li>
+</ol>
+
+<p>Whether rebuilding the lower layer is needed is determined by timestamps of <code>genpack.json5</code> and Portage-related subdirectories (<code>savedconfig/</code>, <code>patches/</code>, <code>kernel/</code>, <code>env/</code>, <code>overlay/</code>).</p>
+
+<h3>upper</h3>
+
+<p>Builds the upper layer (runtime environment).</p>
+
+<pre><code>genpack upper</code></pre>
+
+<p><strong>Prerequisite</strong>: <code>lower</code> execution must be completed.</p>
+
+<p>Processing flow:</p>
+
+<ol>
+<li>Create ext4 image for upper layer (<code>upper.img</code>)</li>
+<li>Copy files listed in <code>lower.files</code> from lower layer</li>
+<li>Execute package scripts</li>
+<li>Create groups and users</li>
+<li>Copy contents of <code>files/</code> directory to root</li>
+<li>Execute build scripts in <code>files/build.d/</code></li>
+<li>Execute <code>setup_commands</code></li>
+<li>Enable systemd services</li>
+</ol>
+
+<h3>pack</h3>
+
+<p>Generate SquashFS image from upper layer.</p>
+
+<pre><code>genpack pack</code></pre>
+
+<p><strong>Prerequisite</strong>: Both <code>lower</code> and <code>upper</code> execution must be completed.</p>
+
+<p>Processing:</p>
+
+<ol>
+<li>Compress upper layer to SquashFS</li>
+<li>Exclude <code>build.d/</code>, log files, and temporary files</li>
+<li>Generate EFI superfloppy image if EFI files exist</li>
+</ol>
+
+<p><strong>Output files</strong>:</p>
+
+<table>
+<thead>
+<tr><th>File</th><th>Condition</th></tr>
+</thead>
+<tbody>
+<tr><td><code>{name}-{arch}.squashfs</code></td><td>Always generated</td></tr>
+<tr><td><code>{name}-{arch}.img</code></td><td>If EFI bootloader is included</td></tr>
+</tbody>
+</table>
+
+<p><strong>Compression methods details</strong>:</p>
+
+<table>
+<thead>
+<tr><th>Method</th><th>mksquashfs options</th><th>Characteristics</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gzip</code></td><td><code>-Xcompression-level 1</code></td><td>Default. Fast</td></tr>
+<tr><td><code>xz</code></td><td><code>-comp xz -b 1M</code></td><td>Smallest size. Time-consuming</td></tr>
+<tr><td><code>lzo</code></td><td><code>-comp lzo</code></td><td>Fast. Lower compression than gzip</td></tr>
+<tr><td><code>none</code></td><td><code>-no-compression</code></td><td>No compression</td></tr>
+</tbody>
+</table>
+
+<h3>bash</h3>
+
+<p>Opens interactive debug shell for lower layer.</p>
+
+<pre><code>genpack bash</code></pre>
+
+<p>Launches a bash shell inside a systemd-nspawn container, allowing direct manipulation and inspection of lower layer filesystem. Used for verifying package installation status and debugging.</p>
+
+<p>Binary package metadata is automatically updated on exit.</p>
+
+<h3>upper-bash</h3>
+
+<p>Opens interactive debug shell overlaid on upper layer.</p>
+
+<pre><code>genpack upper-bash</code></pre>
+
+<p><strong>Prerequisite</strong>: <code>upper</code> execution must be completed.</p>
+
+<p>Used to inspect and debug the contents of the final image.</p>
+
+<h3>archive</h3>
+
+<p>Creates a distribution archive of artifact definition.</p>
+
+<pre><code>genpack archive</code></pre>
+
+<p>Generates <code>genpack-{name}.tar.gz</code> containing <code>genpack.json5</code> and all subdirectories (<code>files/</code>, <code>savedconfig/</code>, <code>patches/</code>, <code>kernel/</code>, <code>env/</code>, <code>overlay/</code>).</p>
+
+<h2>Work Directory Structure</h2>
+
+<p><code>genpack</code> places build artifacts and cache under the <code>work/</code> directory.</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">work/</span>
+<ul>
+<li><span class="label">.dirlock</span> <span class="desc">-- Exclusive lock file</span></li>
+<li><span class="label">portage.tar.xz</span> <span class="desc">-- Portage snapshot (cache)</span></li>
+<li><span class="label">portage.tar.xz.headers</span> <span class="desc">-- Cache validation header</span></li>
+<li><span class="label">{arch}/</span>
+<ul>
+<li><span class="label">lower.img</span> <span class="desc">-- Lower layer filesystem (default 128 GiB)</span></li>
+<li><span class="label">lower.files</span> <span class="desc">-- File list to copy to upper layer</span></li>
+<li><span class="label">upper.img</span> <span class="desc">-- Upper layer filesystem (default 20 GiB)</span></li>
+<li><span class="label">stage3.tar.xz</span> <span class="desc">-- stage3 tarball (cache)</span></li>
+<li><span class="label">stage3.tar.xz.headers</span> <span class="desc">-- Cache validation header</span></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+
+<h2>Cache</h2>
+
+<h3>Download Cache</h3>
+
+<p>stage3 and Portage snapshots are cached under <code>work/</code>. Validated by HTTP headers (<code>Last-Modified</code>, <code>ETag</code>, <code>Content-Length</code>), and not re-downloaded if unchanged.</p>
+
+<h3>Binary Package Cache</h3>
+
+<p>By default, binary packages are stored in <code>~/.cache/genpack/{arch}/binpkgs/</code> as a shared cache. Compiled packages can be reused across different artifacts of the same architecture.</p>
+
+<p>When <code>--independent-binpkgs</code> is specified, an independent cache per artifact is used instead of this shared cache.</p>
+
+<h3>genpack-overlay Cache</h3>
+
+<p>The genpack-overlay git repository is cached in <code>~/.cache/genpack/overlay/</code>.</p>
+
+<h2>Environment Variables</h2>
+
+<p>genpack itself does not reference any environment variables, but the following environment variables are set within the container during the build process:</p>
+
+<table>
+<thead>
+<tr><th>Variable</th><th>Set When</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ARTIFACT</code></td><td>Upper layer build</td><td><code>name</code> from <code>genpack.json5</code></td></tr>
+<tr><td><code>VARIANT</code></td><td>Upper layer build</td><td>Variant name (only when specified)</td></tr>
+</tbody>
+</table>
+
+<h2>Default Values</h2>
+
+<table>
+<thead>
+<tr><th>Setting</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Lower layer image size</td><td>128 GiB</td></tr>
+<tr><td>Upper layer image size</td><td>20 GiB</td></tr>
+<tr><td>genpack-overlay repository</td><td><code>https://github.com/wbrxcorp/genpack-overlay.git</code></td></tr>
+<tr><td>Gentoo mirror</td><td><code>http://ftp.iij.ad.jp/pub/linux/gentoo/</code></td></tr>
+<tr><td>Default compression</td><td>gzip</td></tr>
+</tbody>
+</table>
+
+<h2>Typical Usage</h2>
+
+<pre><code># Full build
+genpack build
+
+# Full build (xz compression)
+genpack --compression xz build
+
+# Build with variant specified
+genpack --variant cuda build
+
+# Step-by-step build
+genpack lower
+genpack upper
+genpack pack
+
+# Debug (lower layer shell)
+genpack bash
+
+# Debug (upper layer shell)
+genpack upper-bash
+
+# Debug (verbose logs)
+genpack --debug build
+
+# Build with local genpack-overlay version
+genpack --overlay-override ~/projects/genpack-overlay build
+
+# Create archive
+genpack archive</code></pre>
+
+<section class="source-references">
+<h2>Source References</h2>
+<p>This document was written based on the following repository snapshots:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.en.html">genpack — Gentoo-based Immutable System Image Build Toolchain</a></li>
+<li><a href="json5.en.html">genpack.json5 Specification Reference</a></li>
+<li><a href="subdirectories.en.html">Artifact Directory Structure</a></li>
+<li><a href="profiles.en.html">genpack-overlay Profile Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+<li><a href="artifact-stub.en.html">stub — Multi-distribution Installer and kexec Bootloader for VMs</a></li>
+<li><a href="uvp.en.html">Discussion on the Uniqueness of genpack's Value Proposition</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

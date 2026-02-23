@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack-overlay Profile Reference</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack-overlay Profile Reference" />
+<meta property="og:description" content="Profile hierarchy and metapackages that define base environments for genpack images" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/profiles.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack-overlay Profile Reference" />
+<meta name="twitter:description" content="Profile hierarchy and metapackages that define base environments for genpack images" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<h1>genpack-overlay Profile Reference</h1>
+
+<h2>Overview</h2>
+
+<p>genpack-overlay profiles define the base environment for genpack images. When you specify a profile like <code>profile: "paravirt"</code> in <code>genpack.json5</code>, the packages, USE flags, and keyword settings associated with that profile are automatically applied.</p>
+
+<p>Profiles are structured using Gentoo's Portage profile mechanism and have hierarchical inheritance relationships.</p>
+
+<h2>Profile Hierarchy</h2>
+
+<p>All profiles inherit from the <code>genpack</code> root profile and are further organized through architecture-specific layers.</p>
+
+<div class="tree-diagram">
+<ul>
+<li>
+<span class="label">genpack</span> <span class="desc">(Root: base configuration common to all environments)</span>
+<ul>
+<li><span class="label">genpack/paravirt</span> <span class="desc">(for virtual machines)</span></li>
+<li>
+<span class="label">genpack/systemimg</span> <span class="desc">(for disk images)</span>
+<ul>
+<li><span class="label">genpack/systemimg/baremetal</span> <span class="desc">(for physical machines)</span></li>
+</ul>
+</li>
+<li><span class="label">genpack/weston</span> <span class="desc">(Wayland desktop)</span></li>
+<li><span class="label">genpack/gnome</span> <span class="desc">(GNOME desktop)</span></li>
+</ul>
+</li>
+</ul>
+</div>
+
+<p>When actually selecting a profile, the architecture layer is automatically inserted:</p>
+
+<pre><code>genpack.json5: profile: "paravirt"
+  → genpack/amd64/paravirt  (for x86_64)
+  → genpack/arm64/paravirt  (for aarch64)</code></pre>
+
+<h2>Available Profiles</h2>
+
+<h3>paravirt</h3>
+
+<p><strong>Purpose</strong>: For QEMU/KVM virtual machines</p>
+
+<p>Mutually exclusive with <code>systemimg</code>. Includes packages optimized for virtualization (guest agents, virtio support) and excludes physical hardware drivers.</p>
+
+<p><strong>Added Packages</strong> (genpack/paravirt metapackage):</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/base</code></td><td>Base system (described below)</td></tr>
+<tr><td><code>app-emulation/qemu-guest-agent</code></td><td>QEMU guest agent</td></tr>
+<tr><td><code>sys-libs/liburing</code></td><td>Asynchronous I/O support</td></tr>
+<tr><td><code>net-misc/socat</code></td><td>Multi-purpose relay tool</td></tr>
+</tbody>
+</table>
+
+<p><strong>USE Flags</strong>:</p>
+
+<pre><code>media-libs/mesa video_cards_zink video_cards_lavapipe</code></pre>
+
+<p>Virtual machines use software rendering (lavapipe) and Zink (OpenGL on Vulkan).</p>
+
+<h3>systemimg</h3>
+
+<p><strong>Purpose</strong>: For disk image-based installation (format written by genpack-install)</p>
+
+<p>Mutually exclusive with <code>paravirt</code>. Includes packages necessary for disk writing and bootloader installation by genpack-install.</p>
+
+<p><strong>Added Packages</strong> (genpack/systemimg metapackage):</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/base</code></td><td>Base system</td></tr>
+<tr><td><code>genpack/genpack-install</code></td><td>Disk writing and self-update tool</td></tr>
+<tr><td><code>sys-apps/kbd</code></td><td>Keyboard utilities</td></tr>
+</tbody>
+</table>
+
+<p><strong>USE Flags</strong>:</p>
+
+<pre><code>sys-libs/zlib minizip</code></pre>
+
+<h3>baremetal (systemimg/baremetal)</h3>
+
+<p><strong>Purpose</strong>: For physical machines (inherits from <code>systemimg</code>)</p>
+
+<p>Specified with <code>profile: "baremetal"</code>. Adds tools necessary for physical hardware detection and management.</p>
+
+<p><strong>Added Packages</strong> (enabled by the <code>baremetal</code> USE flag in <code>genpack/systemimg</code>):</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-kernel/linux-firmware</code></td><td>Hardware firmware</td></tr>
+<tr><td><code>sys-fs/lsscsi</code></td><td>SCSI device enumeration</td></tr>
+<tr><td><code>sys-apps/lshw</code></td><td>Hardware information display</td></tr>
+<tr><td><code>sys-apps/hwloc</code></td><td>Hardware topology</td></tr>
+<tr><td><code>sys-apps/usbutils</code></td><td>USB device management</td></tr>
+<tr><td><code>sys-apps/pciutils</code></td><td>PCI device management</td></tr>
+<tr><td><code>sys-apps/dmidecode</code></td><td>DMI/SMBIOS information</td></tr>
+<tr><td><code>sys-apps/lm-sensors</code></td><td>Hardware monitoring</td></tr>
+<tr><td><code>sys-apps/usb_modeswitch</code></td><td>USB mode switching</td></tr>
+<tr><td><code>sys-power/cpupower</code></td><td>CPU frequency management</td></tr>
+<tr><td><code>sys-apps/smartmontools</code></td><td>S.M.A.R.T. monitoring</td></tr>
+<tr><td><code>sys-apps/nvme-cli</code></td><td>NVMe management</td></tr>
+<tr><td><code>sys-apps/hdparm</code></td><td>Disk parameters</td></tr>
+<tr><td><code>sys-apps/ethtool</code></td><td>Network configuration</td></tr>
+</tbody>
+</table>
+
+<p>x86_64 specific:</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>app-misc/beep</code></td><td>Beep sound</td></tr>
+<tr><td><code>sys-apps/msr-tools</code></td><td>MSR register access</td></tr>
+<tr><td><code>sys-apps/memtest86+</code></td><td>Memory testing</td></tr>
+</tbody>
+</table>
+
+<h3>gnome/baremetal</h3>
+
+<p><strong>Purpose</strong>: Physical machine + GNOME desktop</p>
+
+<p>Specified with <code>profile: "gnome/baremetal"</code>. Includes the GNOME desktop environment in addition to all baremetal packages.</p>
+
+<p><strong>Added Packages</strong> (genpack/gnome metapackage):</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gnome-base/gnome</code></td><td>GNOME desktop environment suite</td></tr>
+<tr><td><code>media-fonts/noto-cjk</code></td><td>CJK fonts</td></tr>
+<tr><td><code>media-fonts/noto-emoji</code></td><td>Emoji fonts</td></tr>
+<tr><td><code>x11-apps/mesa-progs</code></td><td>OpenGL test tools</td></tr>
+<tr><td><code>dev-util/vulkan-tools</code></td><td>Vulkan test tools</td></tr>
+<tr><td><code>net-libs/libnsl</code></td><td>NIS support library</td></tr>
+<tr><td><code>app-misc/evtest</code></td><td>Input event testing</td></tr>
+<tr><td><code>net-misc/gnome-remote-desktop</code></td><td>Remote desktop</td></tr>
+<tr><td><code>app-i18n/mozc</code></td><td>Japanese input (enabled by default)</td></tr>
+</tbody>
+</table>
+
+<p><strong>Inherited From</strong>: Includes the <code>gentoo:targets/desktop/gnome</code> profile, so comprehensive USE flags required for GNOME are automatically configured.</p>
+
+<h3>weston/paravirt</h3>
+
+<p><strong>Purpose</strong>: Virtual machine + Wayland (Weston) desktop</p>
+
+<p>Specified with <code>profile: "weston/paravirt"</code>. Provides a lightweight desktop environment based on the Weston compositor.</p>
+
+<p><strong>Added Packages</strong> (genpack/weston metapackage):</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>dev-libs/weston</code></td><td>Wayland compositor</td></tr>
+<tr><td><code>app-misc/wayland-utils</code></td><td>Wayland utilities</td></tr>
+<tr><td><code>app-i18n/mozc</code></td><td>Japanese input</td></tr>
+<tr><td><code>app-i18n/fcitx-gtk</code></td><td>Input method framework</td></tr>
+<tr><td><code>gui-apps/wl-clipboard</code></td><td>Wayland clipboard</td></tr>
+<tr><td><code>gui-apps/tuigreet</code></td><td>Login greeter (enabled by default)</td></tr>
+<tr><td><code>media-fonts/noto-cjk</code></td><td>CJK fonts</td></tr>
+<tr><td><code>media-fonts/noto-emoji</code></td><td>Emoji fonts</td></tr>
+<tr><td><code>x11-apps/mesa-progs</code></td><td>OpenGL test tools</td></tr>
+<tr><td><code>dev-util/vulkan-tools</code></td><td>Vulkan test tools</td></tr>
+</tbody>
+</table>
+
+<p><strong>Global USE Flags</strong>:</p>
+
+<pre><code>USE="wayland -X"</code></pre>
+
+<p>Disables X11 and prioritizes Wayland.</p>
+
+<p><strong>Package-specific USE Flags</strong> (74 items, major ones):</p>
+
+<pre><code>sys-apps/systemd policykit
+media-libs/mesa X vulkan vaapi
+app-i18n/mozc fcitx5
+dev-qt/qtbase opengl vulkan</code></pre>
+
+<p>USE flags are configured for numerous applications including Chrome, VS Code, Ghostty, GIMP, Evolution, LibreOffice, and VLC.</p>
+
+<p><strong>Virtual Machine Video Driver</strong>:</p>
+
+<pre><code>VIDEO_CARDS="-intel -nouveau -radeon -radeonsi virgl"</code></pre>
+
+<h3>raspberrypi</h3>
+
+<p><strong>Purpose</strong>: For Raspberry Pi (arm64 only)</p>
+
+<p>Specified with <code>profile: "raspberrypi"</code> (exclusive to arm64 architecture). Inherits from <code>baremetal</code> and adds Raspberry Pi-specific kernel and firmware.</p>
+
+<p><strong>Added Packages</strong>:</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-kernel/raspberrypi-image</code></td><td>Raspberry Pi kernel</td></tr>
+<tr><td><code>sys-firmware/raspberrypi-wifi-ucode</code></td><td>Wi-Fi firmware</td></tr>
+</tbody>
+</table>
+
+<h2>Root Profile (genpack)</h2>
+
+<p>Common configuration inherited by all profiles.</p>
+
+<p><strong>Packages</strong>:</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/genpack-progs</code></td><td>genpack build utilities (always included)</td></tr>
+<tr><td><code>genpack/base</code></td><td>Base system</td></tr>
+</tbody>
+</table>
+
+<p><strong>Global USE Flags</strong>:</p>
+
+<pre><code>sys-libs/glibc audit
+sys-kernel/installkernel dracut
+sys-fs/squashfs-tools lz4 lzma lzo xattr zstd
+app-crypt/libb2 -openmp
+dev-lang/perl minimal
+app-editors/vim minimal</code></pre>
+
+<p><strong>Package Masks</strong>:</p>
+
+<pre><code>&gt;=dev-lang/python-3.14</code></pre>
+
+<h2>Base System (genpack/base)</h2>
+
+<p>Base packages included across all profiles.</p>
+
+<p><strong>Always Included Packages</strong>:</p>
+
+<table>
+<thead>
+<tr><th>Category</th><th>Packages</th></tr>
+</thead>
+<tbody>
+<tr><td>Kernel</td><td><code>gentoo-kernel-bin</code> or <code>gentoo-kernel</code> (with initramfs)</td></tr>
+<tr><td>Initialization</td><td><code>dracut-genpack</code>, <code>genpack-init</code>, <code>gentoo-systemd-integration</code></td></tr>
+<tr><td>Basic tools</td><td><code>timezone-data</code>, <code>net-tools</code>, <code>gzip</code>, <code>unzip</code>, <code>grep</code>, <code>coreutils</code>, <code>procps</code>, <code>which</code></td></tr>
+<tr><td>Network</td><td><code>rsync</code>, <code>iputils</code>, <code>iproute2</code></td></tr>
+<tr><td>Runtime</td><td><code>python</code>, <code>requests</code>, <code>ca-certificates</code></td></tr>
+</tbody>
+</table>
+
+<p><strong>Packages Controlled by USE Flags</strong> (all enabled by default):</p>
+
+<table>
+<thead>
+<tr><th>USE Flag</th><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sshd</code></td><td><code>net-misc/openssh</code></td><td>SSH server</td></tr>
+<tr><td><code>vi</code></td><td><code>app-editors/vim</code></td><td>Text editor</td></tr>
+<tr><td><code>strace</code></td><td><code>dev-debug/strace</code></td><td>System call tracing</td></tr>
+<tr><td><code>wireguard</code></td><td><code>net-vpn/wireguard-tools</code>, <code>net-vpn/wg-genconf</code></td><td>VPN</td></tr>
+<tr><td><code>btrfs</code></td><td><code>sys-fs/btrfs-progs</code></td><td>Btrfs filesystem tools</td></tr>
+<tr><td><code>xfs</code></td><td><code>sys-fs/xfsprogs</code></td><td>XFS filesystem tools</td></tr>
+<tr><td><code>cron</code></td><td><code>sys-process/cronie</code></td><td>cron daemon</td></tr>
+<tr><td><code>audit</code></td><td><code>sys-process/audit</code></td><td>Audit framework</td></tr>
+<tr><td><code>logrotate</code></td><td><code>app-admin/logrotate</code></td><td>Log rotation</td></tr>
+<tr><td><code>tcpdump</code></td><td><code>net-analyzer/tcpdump</code></td><td>Packet capture</td></tr>
+<tr><td><code>banner</code></td><td>(genpack banner display)</td><td>Login banner</td></tr>
+</tbody>
+</table>
+
+<h2>Other Metapackages</h2>
+
+<p>Metapackages that can be independently added to the <code>packages</code> section in <code>genpack.json5</code>, separate from profiles.</p>
+
+<h3>genpack/wireless</h3>
+
+<p>Wireless network support:</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>net-wireless/wpa_supplicant_any80211</code></td><td>WPA supplicant</td></tr>
+<tr><td><code>net-wireless/iw</code></td><td>Wireless LAN configuration</td></tr>
+<tr><td><code>net-wireless/wireless-tools</code></td><td>Wireless tools</td></tr>
+<tr><td><code>net-wireless/bluez</code></td><td>Bluetooth stack</td></tr>
+<tr><td><code>net-wireless/hostapd</code></td><td>Access point</td></tr>
+</tbody>
+</table>
+
+<h3>genpack/devel</h3>
+
+<p>Development tools:</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-devel/binutils</code></td><td>Binary utilities</td></tr>
+<tr><td><code>sys-devel/gcc</code></td><td>C/C++ compiler</td></tr>
+<tr><td><code>dev-debug/gdb</code></td><td>Debugger</td></tr>
+</tbody>
+</table>
+
+<h3>genpack/devlauncher</h3>
+
+<p>Development environment for AI agents (includes <code>genpack/devel</code>):</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>www-client/google-chrome</code></td><td>Web browser</td></tr>
+<tr><td><code>gui-apps/waypipe</code></td><td>Wayland remote display</td></tr>
+<tr><td><code>dev-util/claude-code</code></td><td>AI coding assistant</td></tr>
+<tr><td><code>app-editors/vscode</code></td><td>Code editor</td></tr>
+<tr><td><code>x11-terms/ghostty</code></td><td>Terminal emulator</td></tr>
+<tr><td><code>app-containers/docker</code></td><td>Container runtime</td></tr>
+<tr><td>Other</td><td>jq, fd, bat, pip, pytest, pylint, etc.</td></tr>
+</tbody>
+</table>
+
+<h2>Profile Selection Guide</h2>
+
+<table>
+<thead>
+<tr><th>Use Case</th><th>Profile</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>QEMU/KVM virtual machines</td><td><code>paravirt</code></td><td>Most common</td></tr>
+<tr><td>Physical machines (servers)</td><td><code>baremetal</code></td><td>Includes hardware detection tools</td></tr>
+<tr><td>Physical machines + GNOME desktop</td><td><code>gnome/baremetal</code></td><td>Full desktop</td></tr>
+<tr><td>Virtual machines + GUI</td><td><code>weston/paravirt</code></td><td>Lightweight Wayland desktop</td></tr>
+<tr><td>Raspberry Pi</td><td><code>raspberrypi</code></td><td>arm64 only</td></tr>
+<tr><td>No profile</td><td>(none)</td><td><code>genpack/base</code> only. Minimal setup for custom builds from scratch</td></tr>
+</tbody>
+</table>
+
+<h2>Architecture-Specific Differences</h2>
+
+<table>
+<thead>
+<tr><th>Architecture</th><th>Supported Profiles</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>x86_64 (amd64)</td><td>All profiles</td><td>With GRUB EFI-32 support</td></tr>
+<tr><td>aarch64 (arm64)</td><td>paravirt, baremetal, raspberrypi</td><td>Dedicated Raspberry Pi profile available</td></tr>
+<tr><td>i686 (x86)</td><td>base, systemimg</td><td>No desktop profiles</td></tr>
+<tr><td>riscv64</td><td>base equivalent</td><td>Limited support</td></tr>
+</tbody>
+</table>
+
+<section class="source-references">
+<h2>Source References</h2>
+<p>This document was written based on the following repository snapshots:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.en.html">genpack — Gentoo-Based Immutable System Image Build Toolchain</a></li>
+<li><a href="json5.en.html">genpack.json5 Specification Reference</a></li>
+<li><a href="subdirectories.en.html">Artifact Directory Structure</a></li>
+<li><a href="artifact-stub.en.html">stub — Multi-Distribution Installer and kexec Bootloader for VMs</a></li>
+<li><a href="uvp.en.html">A Dialogue on the Unique Value Proposition of genpack</a></li>
+<li><a href="cli.en.html">genpack CLI Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

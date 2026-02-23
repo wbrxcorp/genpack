@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack-overlay プロファイルリファレンス</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack-overlay プロファイルリファレンス" />
+<meta property="og:description" content="genpack イメージのベース環境を定義するプロファイル階層とメタパッケージの仕様" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/profiles.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack-overlay プロファイルリファレンス" />
+<meta name="twitter:description" content="genpack イメージのベース環境を定義するプロファイル階層とメタパッケージの仕様" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="profiles.en.html">English version</a></p>
+
+<h1>genpack-overlay プロファイルリファレンス</h1>
+
+<h2>概要</h2>
+
+<p>genpack-overlay のプロファイルは、genpack イメージのベース環境を定義します。<code>genpack.json5</code> で <code>profile: "paravirt"</code> のように指定すると、そのプロファイルが持つパッケージ群、USE フラグ、キーワード設定などが自動的に適用されます。</p>
+
+<p>プロファイルは Gentoo の Portage プロファイル機構を使って構成されており、階層的な継承関係を持ちます。</p>
+
+<h2>プロファイル階層</h2>
+
+<p>全てのプロファイルは <code>genpack</code> ルートプロファイルを継承し、さらにアーキテクチャ固有の層を経由します。</p>
+
+<div class="tree-diagram">
+<ul>
+<li>
+<span class="label">genpack</span> <span class="desc">(ルート: 全環境共通の基本設定)</span>
+<ul>
+<li><span class="label">genpack/paravirt</span> <span class="desc">(仮想マシン向け)</span></li>
+<li>
+<span class="label">genpack/systemimg</span> <span class="desc">(ディスクイメージ向け)</span>
+<ul>
+<li><span class="label">genpack/systemimg/baremetal</span> <span class="desc">(物理マシン向け)</span></li>
+</ul>
+</li>
+<li><span class="label">genpack/weston</span> <span class="desc">(Wayland デスクトップ)</span></li>
+<li><span class="label">genpack/gnome</span> <span class="desc">(GNOME デスクトップ)</span></li>
+</ul>
+</li>
+</ul>
+</div>
+
+<p>実際のプロファイル選択時には、アーキテクチャ層が自動的に挿入されます:</p>
+
+<pre><code>genpack.json5: profile: "paravirt"
+  → genpack/amd64/paravirt  (x86_64 の場合)
+  → genpack/arm64/paravirt  (aarch64 の場合)</code></pre>
+
+<h2>利用可能なプロファイル</h2>
+
+<h3>paravirt</h3>
+
+<p><strong>用途</strong>: QEMU/KVM 仮想マシン向け</p>
+
+<p><code>systemimg</code> と排他的です。仮想化環境に特化したパッケージ(ゲストエージェント、virtio 対応)を含み、物理ハードウェア向けのドライバ類を含みません。</p>
+
+<p><strong>追加されるパッケージ</strong> (genpack/paravirt メタパッケージ):</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/base</code></td><td>ベースシステム(後述)</td></tr>
+<tr><td><code>app-emulation/qemu-guest-agent</code></td><td>QEMU ゲストエージェント</td></tr>
+<tr><td><code>sys-libs/liburing</code></td><td>非同期 I/O サポート</td></tr>
+<tr><td><code>net-misc/socat</code></td><td>多目的リレーツール</td></tr>
+</tbody>
+</table>
+
+<p><strong>USE フラグ設定</strong>:</p>
+
+<pre><code>media-libs/mesa video_cards_zink video_cards_lavapipe</code></pre>
+
+<p>仮想マシンではソフトウェアレンダリング (lavapipe) と Zink (OpenGL on Vulkan) が使用されます。</p>
+
+<h3>systemimg</h3>
+
+<p><strong>用途</strong>: ディスクイメージベースのインストール向け(genpack-install で書き込む形式)</p>
+
+<p><code>paravirt</code> と排他的です。genpack-install によるディスク書き込みとブートローダー設置に必要なパッケージを含みます。</p>
+
+<p><strong>追加されるパッケージ</strong> (genpack/systemimg メタパッケージ):</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/base</code></td><td>ベースシステム</td></tr>
+<tr><td><code>genpack/genpack-install</code></td><td>ディスク書き込み・セルフアップデートツール</td></tr>
+<tr><td><code>sys-apps/kbd</code></td><td>キーボードユーティリティ</td></tr>
+</tbody>
+</table>
+
+<p><strong>USE フラグ設定</strong>:</p>
+
+<pre><code>sys-libs/zlib minizip</code></pre>
+
+<h3>baremetal (systemimg/baremetal)</h3>
+
+<p><strong>用途</strong>: 物理マシン向け(<code>systemimg</code> を継承)</p>
+
+<p><code>profile: "baremetal"</code> で指定します。物理ハードウェアの検出・管理に必要なツール群を追加します。</p>
+
+<p><strong>追加されるパッケージ</strong> (<code>genpack/systemimg</code> の <code>baremetal</code> USE フラグで有効化):</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-kernel/linux-firmware</code></td><td>ハードウェアファームウェア</td></tr>
+<tr><td><code>sys-fs/lsscsi</code></td><td>SCSI デバイス列挙</td></tr>
+<tr><td><code>sys-apps/lshw</code></td><td>ハードウェア情報表示</td></tr>
+<tr><td><code>sys-apps/hwloc</code></td><td>ハードウェアトポロジ</td></tr>
+<tr><td><code>sys-apps/usbutils</code></td><td>USB デバイス管理</td></tr>
+<tr><td><code>sys-apps/pciutils</code></td><td>PCI デバイス管理</td></tr>
+<tr><td><code>sys-apps/dmidecode</code></td><td>DMI/SMBIOS 情報</td></tr>
+<tr><td><code>sys-apps/lm-sensors</code></td><td>ハードウェアモニタリング</td></tr>
+<tr><td><code>sys-apps/usb_modeswitch</code></td><td>USB モード切替</td></tr>
+<tr><td><code>sys-power/cpupower</code></td><td>CPU 周波数管理</td></tr>
+<tr><td><code>sys-apps/smartmontools</code></td><td>S.M.A.R.T. 監視</td></tr>
+<tr><td><code>sys-apps/nvme-cli</code></td><td>NVMe 管理</td></tr>
+<tr><td><code>sys-apps/hdparm</code></td><td>ディスクパラメータ</td></tr>
+<tr><td><code>sys-apps/ethtool</code></td><td>ネットワーク設定</td></tr>
+</tbody>
+</table>
+
+<p>x86_64 固有:</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>app-misc/beep</code></td><td>ビープ音</td></tr>
+<tr><td><code>sys-apps/msr-tools</code></td><td>MSR レジスタアクセス</td></tr>
+<tr><td><code>sys-apps/memtest86+</code></td><td>メモリテスト</td></tr>
+</tbody>
+</table>
+
+<h3>gnome/baremetal</h3>
+
+<p><strong>用途</strong>: 物理マシン + GNOME デスクトップ</p>
+
+<p><code>profile: "gnome/baremetal"</code> で指定します。<code>baremetal</code> の全パッケージに加えて GNOME デスクトップ環境を含みます。</p>
+
+<p><strong>追加されるパッケージ</strong> (genpack/gnome メタパッケージ):</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gnome-base/gnome</code></td><td>GNOME デスクトップ環境一式</td></tr>
+<tr><td><code>media-fonts/noto-cjk</code></td><td>CJK フォント</td></tr>
+<tr><td><code>media-fonts/noto-emoji</code></td><td>絵文字フォント</td></tr>
+<tr><td><code>x11-apps/mesa-progs</code></td><td>OpenGL テストツール</td></tr>
+<tr><td><code>dev-util/vulkan-tools</code></td><td>Vulkan テストツール</td></tr>
+<tr><td><code>net-libs/libnsl</code></td><td>NIS サポートライブラリ</td></tr>
+<tr><td><code>app-misc/evtest</code></td><td>入力イベントテスト</td></tr>
+<tr><td><code>net-misc/gnome-remote-desktop</code></td><td>リモートデスクトップ</td></tr>
+<tr><td><code>app-i18n/mozc</code></td><td>日本語入力(デフォルト有効)</td></tr>
+</tbody>
+</table>
+
+<p><strong>継承元</strong>: <code>gentoo:targets/desktop/gnome</code> プロファイルを含むため、GNOME に必要な広範な USE フラグが自動設定されます。</p>
+
+<h3>weston/paravirt</h3>
+
+<p><strong>用途</strong>: 仮想マシン + Wayland (Weston) デスクトップ</p>
+
+<p><code>profile: "weston/paravirt"</code> で指定します。Weston コンポジタをベースとした軽量なデスクトップ環境を提供します。</p>
+
+<p><strong>追加されるパッケージ</strong> (genpack/weston メタパッケージ):</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>dev-libs/weston</code></td><td>Wayland コンポジタ</td></tr>
+<tr><td><code>app-misc/wayland-utils</code></td><td>Wayland ユーティリティ</td></tr>
+<tr><td><code>app-i18n/mozc</code></td><td>日本語入力</td></tr>
+<tr><td><code>app-i18n/fcitx-gtk</code></td><td>入力メソッドフレームワーク</td></tr>
+<tr><td><code>gui-apps/wl-clipboard</code></td><td>Wayland クリップボード</td></tr>
+<tr><td><code>gui-apps/tuigreet</code></td><td>ログイングリーター(デフォルト有効)</td></tr>
+<tr><td><code>media-fonts/noto-cjk</code></td><td>CJK フォント</td></tr>
+<tr><td><code>media-fonts/noto-emoji</code></td><td>絵文字フォント</td></tr>
+<tr><td><code>x11-apps/mesa-progs</code></td><td>OpenGL テストツール</td></tr>
+<tr><td><code>dev-util/vulkan-tools</code></td><td>Vulkan テストツール</td></tr>
+</tbody>
+</table>
+
+<p><strong>グローバル USE フラグ</strong>:</p>
+
+<pre><code>USE="wayland -X"</code></pre>
+
+<p>X11 を無効化し、Wayland を優先する設定です。</p>
+
+<p><strong>パッケージ別 USE フラグ</strong> (74 項目、主要なもの):</p>
+
+<pre><code>sys-apps/systemd policykit
+media-libs/mesa X vulkan vaapi
+app-i18n/mozc fcitx5
+dev-qt/qtbase opengl vulkan</code></pre>
+
+<p>Chrome、VS Code、Ghostty、GIMP、Evolution、LibreOffice、VLC など多数のアプリケーション向けの USE フラグが設定されています。</p>
+
+<p><strong>仮想マシン向けビデオドライバ</strong>:</p>
+
+<pre><code>VIDEO_CARDS="-intel -nouveau -radeon -radeonsi virgl"</code></pre>
+
+<h3>raspberrypi</h3>
+
+<p><strong>用途</strong>: Raspberry Pi 向け(arm64 のみ)</p>
+
+<p><code>profile: "raspberrypi"</code> で指定します(arm64 アーキテクチャ専用)。<code>baremetal</code> を継承し、Raspberry Pi 固有のカーネルとファームウェアを追加します。</p>
+
+<p><strong>追加されるパッケージ</strong>:</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-kernel/raspberrypi-image</code></td><td>Raspberry Pi カーネル</td></tr>
+<tr><td><code>sys-firmware/raspberrypi-wifi-ucode</code></td><td>Wi-Fi ファームウェア</td></tr>
+</tbody>
+</table>
+
+<h2>ルートプロファイル (genpack)</h2>
+
+<p>全プロファイルが継承する共通設定です。</p>
+
+<p><strong>パッケージ</strong>:</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/genpack-progs</code></td><td>genpack ビルドユーティリティ(常に含まれる)</td></tr>
+<tr><td><code>genpack/base</code></td><td>ベースシステム</td></tr>
+</tbody>
+</table>
+
+<p><strong>グローバル USE フラグ</strong>:</p>
+
+<pre><code>sys-libs/glibc audit
+sys-kernel/installkernel dracut
+sys-fs/squashfs-tools lz4 lzma lzo xattr zstd
+app-crypt/libb2 -openmp
+dev-lang/perl minimal
+app-editors/vim minimal</code></pre>
+
+<p><strong>パッケージマスク</strong>:</p>
+
+<pre><code>&gt;=dev-lang/python-3.14</code></pre>
+
+<h2>ベースシステム (genpack/base)</h2>
+
+<p>全プロファイルを通じて含まれるベースパッケージです。</p>
+
+<p><strong>常に含まれるパッケージ</strong>:</p>
+
+<table>
+<thead>
+<tr><th>カテゴリ</th><th>パッケージ</th></tr>
+</thead>
+<tbody>
+<tr><td>カーネル</td><td><code>gentoo-kernel-bin</code> または <code>gentoo-kernel</code> (initramfs 付き)</td></tr>
+<tr><td>初期化</td><td><code>dracut-genpack</code>, <code>genpack-init</code>, <code>gentoo-systemd-integration</code></td></tr>
+<tr><td>基本ツール</td><td><code>timezone-data</code>, <code>net-tools</code>, <code>gzip</code>, <code>unzip</code>, <code>grep</code>, <code>coreutils</code>, <code>procps</code>, <code>which</code></td></tr>
+<tr><td>ネットワーク</td><td><code>rsync</code>, <code>iputils</code>, <code>iproute2</code></td></tr>
+<tr><td>ランタイム</td><td><code>python</code>, <code>requests</code>, <code>ca-certificates</code></td></tr>
+</tbody>
+</table>
+
+<p><strong>USE フラグで制御可能なパッケージ</strong> (全てデフォルト有効):</p>
+
+<table>
+<thead>
+<tr><th>USE フラグ</th><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sshd</code></td><td><code>net-misc/openssh</code></td><td>SSH サーバー</td></tr>
+<tr><td><code>vi</code></td><td><code>app-editors/vim</code></td><td>テキストエディタ</td></tr>
+<tr><td><code>strace</code></td><td><code>dev-debug/strace</code></td><td>システムコールトレース</td></tr>
+<tr><td><code>wireguard</code></td><td><code>net-vpn/wireguard-tools</code>, <code>net-vpn/wg-genconf</code></td><td>VPN</td></tr>
+<tr><td><code>btrfs</code></td><td><code>sys-fs/btrfs-progs</code></td><td>Btrfs ファイルシステムツール</td></tr>
+<tr><td><code>xfs</code></td><td><code>sys-fs/xfsprogs</code></td><td>XFS ファイルシステムツール</td></tr>
+<tr><td><code>cron</code></td><td><code>sys-process/cronie</code></td><td>cron デーモン</td></tr>
+<tr><td><code>audit</code></td><td><code>sys-process/audit</code></td><td>監査フレームワーク</td></tr>
+<tr><td><code>logrotate</code></td><td><code>app-admin/logrotate</code></td><td>ログローテーション</td></tr>
+<tr><td><code>tcpdump</code></td><td><code>net-analyzer/tcpdump</code></td><td>パケットキャプチャ</td></tr>
+<tr><td><code>banner</code></td><td>(genpack バナー表示)</td><td>ログインバナー</td></tr>
+</tbody>
+</table>
+
+<h2>その他のメタパッケージ</h2>
+
+<p>プロファイルとは独立して <code>genpack.json5</code> の <code>packages</code> に追加できるメタパッケージです。</p>
+
+<h3>genpack/wireless</h3>
+
+<p>無線ネットワークサポート:</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>net-wireless/wpa_supplicant_any80211</code></td><td>WPA サプリカント</td></tr>
+<tr><td><code>net-wireless/iw</code></td><td>無線 LAN 設定</td></tr>
+<tr><td><code>net-wireless/wireless-tools</code></td><td>無線ツール</td></tr>
+<tr><td><code>net-wireless/bluez</code></td><td>Bluetooth スタック</td></tr>
+<tr><td><code>net-wireless/hostapd</code></td><td>アクセスポイント</td></tr>
+</tbody>
+</table>
+
+<h3>genpack/devel</h3>
+
+<p>開発ツール:</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-devel/binutils</code></td><td>バイナリユーティリティ</td></tr>
+<tr><td><code>sys-devel/gcc</code></td><td>C/C++ コンパイラ</td></tr>
+<tr><td><code>dev-debug/gdb</code></td><td>デバッガ</td></tr>
+</tbody>
+</table>
+
+<h3>genpack/devlauncher</h3>
+
+<p>AI エージェント向け開発環境 (<code>genpack/devel</code> を含む):</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>www-client/google-chrome</code></td><td>Web ブラウザ</td></tr>
+<tr><td><code>gui-apps/waypipe</code></td><td>Wayland リモート表示</td></tr>
+<tr><td><code>dev-util/claude-code</code></td><td>AI コーディングアシスタント</td></tr>
+<tr><td><code>app-editors/vscode</code></td><td>コードエディタ</td></tr>
+<tr><td><code>x11-terms/ghostty</code></td><td>ターミナルエミュレータ</td></tr>
+<tr><td><code>app-containers/docker</code></td><td>コンテナランタイム</td></tr>
+<tr><td>その他</td><td>jq, fd, bat, pip, pytest, pylint 等</td></tr>
+</tbody>
+</table>
+
+<h2>プロファイルの選択ガイド</h2>
+
+<table>
+<thead>
+<tr><th>ユースケース</th><th>プロファイル</th><th>備考</th></tr>
+</thead>
+<tbody>
+<tr><td>QEMU/KVM 仮想マシン</td><td><code>paravirt</code></td><td>最も一般的</td></tr>
+<tr><td>物理マシン (サーバー)</td><td><code>baremetal</code></td><td>ハードウェア検出ツール付き</td></tr>
+<tr><td>物理マシン + GNOME デスクトップ</td><td><code>gnome/baremetal</code></td><td>フルデスクトップ</td></tr>
+<tr><td>仮想マシン + GUI</td><td><code>weston/paravirt</code></td><td>軽量 Wayland デスクトップ</td></tr>
+<tr><td>Raspberry Pi</td><td><code>raspberrypi</code></td><td>arm64 専用</td></tr>
+<tr><td>プロファイルなし</td><td>(なし)</td><td><code>genpack/base</code> のみ。最小構成から独自に構築する場合</td></tr>
+</tbody>
+</table>
+
+<h2>アーキテクチャ固有の差異</h2>
+
+<table>
+<thead>
+<tr><th>アーキテクチャ</th><th>対応プロファイル</th><th>備考</th></tr>
+</thead>
+<tbody>
+<tr><td>x86_64 (amd64)</td><td>全プロファイル</td><td>GRUB EFI-32 サポート付き</td></tr>
+<tr><td>aarch64 (arm64)</td><td>paravirt, baremetal, raspberrypi</td><td>Raspberry Pi 専用プロファイルあり</td></tr>
+<tr><td>i686 (x86)</td><td>base, systemimg</td><td>デスクトッププロファイルなし</td></tr>
+<tr><td>riscv64</td><td>base 相当</td><td>限定的サポート</td></tr>
+</tbody>
+</table>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

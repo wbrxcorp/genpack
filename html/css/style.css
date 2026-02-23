@@ -1,0 +1,407 @@
+:root {
+  --bg: #fdfdfd;
+  --fg: #1a1a1a;
+  --fg-secondary: #555;
+  --accent: #2a6496;
+  --accent-light: #e8f0f8;
+  --border: #d0d0d0;
+  --code-bg: #f4f4f4;
+  --pre-bg: #f8f8f8;
+  --table-header-bg: #eef2f7;
+  --table-stripe: #f9fafb;
+  --link: #2a6496;
+  --link-visited: #5a4a8a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a2e;
+    --fg: #e0e0e0;
+    --fg-secondary: #a0a0a0;
+    --accent: #6db3f2;
+    --accent-light: #1e2a3a;
+    --border: #3a3a4e;
+    --code-bg: #252540;
+    --pre-bg: #20203a;
+    --table-header-bg: #252545;
+    --table-stripe: #1e1e38;
+    --link: #6db3f2;
+    --link-visited: #a898d8;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  line-height: 1.8;
+  color: var(--fg);
+  background: var(--bg);
+  max-width: 52em;
+  margin: 0 auto;
+  padding: 2em 1.5em 4em;
+}
+
+body.ja {
+  font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Meiryo", sans-serif;
+}
+
+body.en {
+  font-family: "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+h1 {
+  font-size: 1.6em;
+  border-bottom: 3px solid var(--accent);
+  padding-bottom: 0.4em;
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 1.3em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
+  margin-top: 2.5em;
+}
+
+h3 {
+  font-size: 1.1em;
+  margin-top: 1.8em;
+}
+
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:visited { color: var(--link-visited); }
+
+code {
+  font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+}
+
+pre {
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1em 1.2em;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.92em;
+}
+
+th, td {
+  border: 1px solid var(--border);
+  padding: 0.5em 0.8em;
+  text-align: left;
+}
+
+th {
+  background: var(--table-header-bg);
+  font-weight: 600;
+}
+
+tr:nth-child(even) td { background: var(--table-stripe); }
+
+strong { font-weight: 700; }
+
+ul, ol { padding-left: 1.5em; }
+li { margin-bottom: 0.3em; }
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.5em 0;
+}
+
+.lang-link {
+  text-align: right;
+  font-size: 0.9em;
+  margin-bottom: 1em;
+}
+
+nav.doc-nav {
+  margin-top: 3em;
+  padding-top: 1.5em;
+  border-top: 2px solid var(--border);
+}
+
+nav.doc-nav h2 {
+  font-size: 1em;
+  border-bottom: none;
+  margin-top: 0;
+  padding-bottom: 0;
+}
+
+nav.doc-nav ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+nav.doc-nav li {
+  margin-bottom: 0.5em;
+}
+
+.diagram {
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1em 1.2em;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.82em;
+  line-height: 1.4;
+  white-space: pre;
+}
+
+.note {
+  background: var(--accent-light);
+  border-left: 4px solid var(--accent);
+  padding: 0.8em 1.2em;
+  margin: 1.2em 0;
+  border-radius: 0 6px 6px 0;
+}
+
+/* --- CSS-based diagrams --- */
+
+.arch-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.8em;
+  margin: 1.5em 0;
+}
+
+.arch-grid .box {
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  background: var(--accent-light);
+  text-align: center;
+  font-size: 0.88em;
+}
+
+.arch-grid .box .name { font-weight: 700; }
+.arch-grid .box .desc { font-size: 0.85em; color: var(--fg-secondary); margin-top: 0.2em; }
+
+.arch-grid .arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4em;
+  color: var(--accent);
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.arch-grid .label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82em;
+  color: var(--fg-secondary);
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.layer-header {
+  text-align: center;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--fg-secondary);
+  padding-bottom: 0.3em;
+}
+
+.tree-diagram {
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1em 1.2em;
+  margin: 1em 0;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+.tree-diagram ul {
+  list-style: none;
+  padding-left: 1.5em;
+  margin: 0;
+  border-left: 2px solid var(--border);
+}
+
+.tree-diagram > ul {
+  border-left: none;
+  padding-left: 0;
+}
+
+.tree-diagram li {
+  position: relative;
+  margin-bottom: 0.2em;
+}
+
+.tree-diagram li::before {
+  content: "";
+  position: absolute;
+  left: -1.5em;
+  top: 0.7em;
+  width: 1.2em;
+  border-bottom: 2px solid var(--border);
+}
+
+.tree-diagram > ul > li::before { display: none; }
+
+.tree-diagram .label { font-weight: 600; }
+.tree-diagram .desc { color: var(--fg-secondary); font-size: 0.9em; }
+
+.partition-diagram {
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  margin: 1em 0;
+  overflow: hidden;
+  font-size: 0.9em;
+}
+
+.partition-diagram .part {
+  padding: 0.6em 1em;
+  border-bottom: 1px solid var(--border);
+}
+
+.partition-diagram .part:last-child { border-bottom: none; }
+
+.partition-diagram .part-title {
+  font-weight: 600;
+  margin-bottom: 0.3em;
+}
+
+.partition-diagram .part-files {
+  padding-left: 1.5em;
+  color: var(--fg-secondary);
+  font-size: 0.92em;
+}
+
+.partition-diagram .part-files .highlight {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.flow-diagram {
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1em 1.2em;
+  margin: 1em 0;
+}
+
+.flow-diagram ol {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  counter-reset: flow;
+}
+
+.flow-diagram > ol > li {
+  counter-increment: flow;
+  margin-bottom: 0.8em;
+  padding-left: 2em;
+  position: relative;
+}
+
+.flow-diagram > ol > li::before {
+  content: counter(flow) ".";
+  position: absolute;
+  left: 0;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.flow-diagram > ol > li::after {
+  content: "↓";
+  display: block;
+  text-align: center;
+  color: var(--accent);
+  font-size: 1.2em;
+  margin-top: 0.3em;
+}
+
+.flow-diagram > ol > li:last-child::after { display: none; }
+
+.flow-diagram ul {
+  list-style: none;
+  padding-left: 1em;
+  margin: 0.2em 0 0;
+}
+
+.flow-diagram ul li::before {
+  content: "├ ";
+  color: var(--accent);
+  font-family: monospace;
+}
+
+.flow-diagram ul li:last-child::before {
+  content: "└ ";
+}
+
+.flow-diagram .step-title { font-weight: 600; }
+
+.update-diagram {
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1em 1.2em;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+
+.update-diagram .step {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  margin-bottom: 0.4em;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.92em;
+}
+
+.update-diagram .from { font-weight: 600; min-width: 7em; text-align: right; }
+.update-diagram .arrow { color: var(--accent); }
+.update-diagram .to { font-weight: 600; min-width: 7em; }
+.update-diagram .desc { color: var(--fg-secondary); font-size: 0.9em; }
+
+.boot-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em;
+  background: var(--pre-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.8em 1em;
+  margin: 1em 0;
+  font-size: 0.88em;
+}
+
+.boot-flow .stage {
+  background: var(--accent-light);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.3em 0.6em;
+  font-weight: 600;
+}
+
+.boot-flow .arrow {
+  color: var(--accent);
+  font-size: 1.2em;
+}

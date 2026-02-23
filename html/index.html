@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack — Gentoo ベースの不変システムイメージビルドツールチェーン" />
+<meta property="og:description" content="Gentoo Linux をベースとして用途特化型の不変システムイメージを宣言的に生成・配布・起動するための一連のツール群" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/index.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack — Gentoo ベースの不変システムイメージビルドツールチェーン" />
+<meta name="twitter:description" content="Gentoo Linux をベースとして用途特化型の不変システムイメージを宣言的に生成・配布・起動するための一連のツール群" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="index.en.html">English version</a></p>
+
+<h1>genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</h1>
+
+<h2>はじめに</h2>
+
+<p>genpack は、Gentoo Linux をベースとして用途特化型の <strong>不変 (immutable) システムイメージ</strong> を宣言的に生成・配布・起動するための一連のツール群です。従来の「OS をインストールしてからカスタマイズする」アプローチとは異なり、<strong>設計図 (JSON5) から OS イメージ全体をビルドする</strong>というイメージファクトリの考え方に基づいています。</p>
+
+<p>Docker がアプリケーションコンテナの世界で実現したことを、<strong>OS 全体のレベル</strong>で、しかも<strong>ベアメタル・仮想マシン・組み込み機器を横断して</strong>実現することを目指しています。</p>
+
+<h2>ツールチェーンの構成</h2>
+
+<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.3em; text-align:center; font-size:0.82em; color:var(--fg-secondary); font-weight:600; margin-top:1em"><span>設計・定義層</span><span>ビルド層</span><span>配布・実行層</span></div>
+<div class="arch-grid">
+<div class="box"><div class="name">genpack-overlay</div><div class="desc">Gentoo オーバーレイ:<br>プロファイル・ebuild</div></div>
+<div class="box"><div class="name">genpack</div><div class="desc">イメージビルダー</div></div>
+<div class="box"><div class="name">genpack-install</div><div class="desc">ディスク書込 / ISO /<br>セルフアップデート</div></div>
+<div class="box"><div class="name">genpack-artifacts</div><div class="desc">各イメージの設定定義集</div></div>
+<div class="box"><div class="name">genpack-init</div><div class="desc">毎回起動時の<br>プロビジョニング</div></div>
+<div class="box"><div class="name">vm</div><div class="desc">QEMU/KVM で<br>仮想マシンとして実行</div></div>
+</div>
+
+<h3>各コンポーネント一覧</h3>
+
+<table>
+<thead>
+<tr><th>コンポーネント</th><th>言語</th><th>役割</th><th>リポジトリ</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>genpack</strong></td><td>Python + C++</td><td>JSON5 設定から SquashFS イメージを生成</td><td><a href="https://github.com/wbrxcorp/genpack">wbrxcorp/genpack</a></td></tr>
+<tr><td><strong>genpack-overlay</strong></td><td>Gentoo ebuild/profile</td><td>パッケージ定義・プロファイル階層・初期化スクリプト群</td><td><a href="https://github.com/wbrxcorp/genpack-overlay">wbrxcorp/genpack-overlay</a></td></tr>
+<tr><td><strong>genpack-init</strong></td><td>C++ + Python (pybind11)</td><td>毎回起動時に system.ini に基づきシステムを構成</td><td><a href="https://github.com/wbrxcorp/genpack-init">wbrxcorp/genpack-init</a></td></tr>
+<tr><td><strong>genpack-install</strong></td><td>C++</td><td>イメージをディスク/ISO/ZIP にデプロイ、セルフアップデート</td><td><a href="https://github.com/wbrxcorp/genpack-install">wbrxcorp/genpack-install</a></td></tr>
+<tr><td><strong>vm</strong></td><td>C++</td><td>genpack イメージを QEMU/KVM 上で実行・管理</td><td><a href="https://github.com/shimarin/vm">shimarin/vm</a></td></tr>
+<tr><td><strong>genpack-artifacts</strong></td><td>JSON5 + シェルスクリプト</td><td>具体的なイメージ定義の集合</td><td><a href="https://github.com/genpack-artifacts">genpack-artifacts</a> (GitHub Organization)</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2>genpack — イメージビルダー</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack">GitHub: wbrxcorp/genpack</a></p>
+
+<p>genpack はツールチェーンの中核をなすビルドエンジンです。<code>genpack.json5</code> という宣言的な設定ファイルを入力として受け取り、Gentoo Linux の stage3 + Portage を使って最適化された SquashFS イメージを生成します。</p>
+
+<h3>ビルドの仕組み: レイヤードアーキテクチャ</h3>
+
+<p>genpack は <strong>lower/upper の 2 層構造</strong> でビルドを行います。</p>
+
+<ol>
+<li><strong>Lower 層</strong>: Gentoo stage3 をベースに、全パッケージを <code>systemd-nspawn</code> コンテナ内でコンパイル・インストールする完全なビルド環境</li>
+<li><strong>Upper 層</strong>: Lower 層から実行時に必要なファイルだけを選択的にコピーし、ユーザー作成・サービス有効化・カスタムファイル配置などの仕上げを実行</li>
+<li><strong>パック</strong>: Upper 層を SquashFS に圧縮して最終イメージを生成</li>
+</ol>
+
+<p>この設計により、コンパイラやヘッダファイルなどビルド時にしか使わないファイルは Lower 層に残り、最終イメージには含まれません。最小限のランタイムイメージが自然に得られます。</p>
+
+<h3>宣言的な設定</h3>
+
+<pre><code class="language-json5">{
+  name: "nextcloud",
+  profile: "paravirt",
+  packages: [
+    "www-apps/nextcloud",
+    "dev-db/mysql",
+    "dev-lang/php",
+    "net-misc/redis"
+  ],
+  services: ["apache2", "mysqld", "redis"],
+  users: [{ name: "nextcloud", uid: 1000 }],
+  use: {
+    "dev-lang/php": "+mysql +curl +gd +xml +zip"
+  },
+  compression: "xz"
+}</code></pre>
+
+<p>パッケージリスト、有効にするサービス、ユーザー定義、USE フラグ、カーネル設定まで、全てがこの 1 ファイルに集約されます。これにより手作業によるシステム構築を排除し、<strong>完全に再現可能なビルド</strong>を実現しています。</p>
+
+<h3>主要コマンド</h3>
+
+<table>
+<thead>
+<tr><th>コマンド</th><th>機能</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack build</code></td><td>フルビルド (lower → upper → pack)</td></tr>
+<tr><td><code>genpack lower</code></td><td>Lower 層のビルド/リビルド</td></tr>
+<tr><td><code>genpack upper</code></td><td>Upper 層のビルド/リビルド</td></tr>
+<tr><td><code>genpack pack</code></td><td>SquashFS イメージの生成</td></tr>
+<tr><td><code>genpack bash</code></td><td>Lower 層内の対話シェル</td></tr>
+<tr><td><code>genpack archive</code></td><td>設定の tar.gz アーカイブを作成</td></tr>
+</tbody>
+</table>
+
+<h3>対応アーキテクチャ</h3>
+
+<p>x86_64, aarch64 (ARM64), i686, riscv64 に対応しています。アーキテクチャ固有の設定は <code>genpack.json5</code> の <code>arch</code> セクションで管理できます。</p>
+
+<hr>
+
+<h2>genpack-overlay — Gentoo オーバーレイ</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack-overlay">GitHub: wbrxcorp/genpack-overlay</a></p>
+
+<p>genpack-overlay は Gentoo のパッケージ管理システム (Portage) を拡張するオーバーレイです。genpack でビルドするイメージの「部品」となるメタパッケージ群と、デプロイ先の違いを吸収するプロファイル階層を提供します。</p>
+
+<h3>プロファイル階層</h3>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">genpack/base</span> <span class="desc">(全環境共通: カーネル, init, 基本ツール)</span>
+<ul>
+<li><span class="label">genpack/systemimg</span> <span class="desc">(ベアメタル: ハードウェア検出, ストレージツール)</span>
+<ul>
+<li><span class="label">systemimg/baremetal</span> <span class="desc">(BIOS/UEFI, デバイスドライバ)</span></li>
+</ul></li>
+<li><span class="label">genpack/paravirt</span> <span class="desc">(仮想化: QEMU ゲストエージェント, virtio)</span></li>
+<li><span class="label">genpack/gnome</span> <span class="desc">(GNOME デスクトップ)</span></li>
+<li><span class="label">genpack/weston</span> <span class="desc">(Wayland コンポジタ)</span></li>
+</ul></li>
+</ul>
+</div>
+
+<p>イメージ定義側は <code>profile: "paravirt"</code> や <code>profile: "gnome/baremetal"</code> を指定するだけで、適切なベース環境が自動的に選択されます。</p>
+
+<h3>パッケージスクリプト</h3>
+
+<p>各パッケージは <code>/usr/lib/genpack/package-scripts/</code> 以下に初期化スクリプトを配置できます。MySQL のデータディレクトリ初期化、Docker のストレージ設定、SSH ホスト鍵の生成など、パッケージ固有の構成処理がここに定義されています。</p>
+
+<hr>
+
+<h2>genpack-init — 起動時プロビジョニングシステム</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack-init">GitHub: wbrxcorp/genpack-init</a></p>
+
+<p>genpack-init は C++ と Python (pybind11) のハイブリッドで構成された初期化システムです。PID 1 として起動し、<strong>毎回の起動時に</strong> ブートパーティション上の <code>system.ini</code> を読み取って Python スクリプト群を実行し、システムを構成します。</p>
+
+<h3>動作の流れ</h3>
+
+<ol>
+<li>PID 1 として起動</li>
+<li><code>/run/initramfs/boot/system.ini</code> (FAT パーティション上) を読み込み</li>
+<li><code>/usr/lib/genpack-init/*.py</code> の各モジュールの <code>configure(ini)</code> 関数を実行</li>
+<li>ホスト名、ネットワーク、ストレージ、サービス構成などを適用</li>
+<li>実際の init (<code>/sbin/init</code> = systemd) に exec で移行</li>
+</ol>
+
+<h3>Python に公開されるネイティブ機能</h3>
+
+<p>genpack-init は pybind11 を通じて以下のような低レベル操作を Python スクリプトに公開します:</p>
+
+<ul>
+<li><strong>ディスク操作</strong>: パーティション情報取得、parted、mkfs、mount/umount</li>
+<li><strong>プラットフォーム検出</strong>: Raspberry Pi / QEMU の判定</li>
+<li><strong>ファイルシステム操作</strong>: chown, chmod, chgrp</li>
+<li><strong>カーネルモジュール</strong>: coldplug (modalias による自動ロード)</li>
+<li><strong>systemd サービス</strong>: enable/disable</li>
+</ul>
+
+<h3>system.ini 駆動アーキテクチャ</h3>
+
+<p>genpack-init の最も重要な設計上の特徴は、<strong>FAT パーティション上の <code>system.ini</code> だけでシステム全体の動作をカスタマイズできる</strong>点にあります。</p>
+
+<div class="partition-diagram">
+<div class="part">
+<div class="part-title">パーティション 1: FAT32 (ブート)</div>
+<div class="part-files">
+EFI/ <span class="desc">— ブートローダー</span><br>
+system.img <span class="desc">— SquashFS OS イメージ</span><br>
+<span class="highlight">system.ini</span> <span class="desc">← ユーザーが編集する唯一のファイル</span>
+</div>
+</div>
+<div class="part">
+<div class="part-title">パーティション 2: データ [任意]</div>
+</div>
+</div>
+
+<h3>ルートファイルシステムの構成: overlayfs による柔軟な永続性制御</h3>
+
+<p>genpack イメージの initramfs は、起動時にブートストレージ上のデータパーティション（QEMU の場合はデータ用仮想ディスク）の有無を検出し、overlayfs ルートファイルシステムの upper layer を動的に決定します:</p>
+
+<ul>
+<li><strong>データパーティションあり</strong> → upper layer に永続ストレージを使用。実行中のファイル変更は再起動後も保持される</li>
+<li><strong>データパーティションなし</strong> → upper layer に tmpfs を使用。実行中の変更は再起動で消失し、毎回クリーンな状態から開始される（トランジェントモード）</li>
+</ul>
+
+<p>この仕組みにより、同一イメージでありながらデプロイ構成によって動作特性を使い分けることができます。データパーティションを設けない構成ではキオスク端末やデモ環境のような「毎回リセットされる」運用が、データパーティションを設ける構成ではサーバーのような永続的な運用がそれぞれ可能です。いずれの場合も、genpack-init は毎回起動時に system.ini を読んでシステムを構成するため、system.ini の変更は常に次回起動時に反映されます。</p>
+
+<h3>system.ini がもたらす利点</h3>
+
+<ul>
+<li><strong>誰でも設定変更できる</strong>: FAT32 は Windows/macOS/Linux どの OS でも読み書き可能。INI 形式はメモ帳で編集できる。Linux の専門知識は不要</li>
+<li><strong>OS の不変性と設定の可変性の完全な分離</strong>: SquashFS は読み取り専用、構成は system.ini に集約。設定が /etc 以下に散在することがない</li>
+<li><strong>毎回起動時の構成適用</strong>: genpack-init は毎回起動時に system.ini を読んでシステムを構成する。system.ini の変更は必ず次回起動に反映される</li>
+<li><strong>同一イメージの多目的展開</strong>: 同じイメージを異なる system.ini で異なる用途にデプロイできる</li>
+<li><strong>物理アクセスによるリカバリ</strong>: ネットワーク設定を誤った場合でも、ストレージを取り出して FAT パーティション上の system.ini を修正するだけで復旧可能</li>
+<li><strong>OS 更新と設定の独立</strong>: イメージを差し替えても system.ini はそのまま維持される。設定ファイルの上書き問題が発生しない</li>
+</ul>
+
+<hr>
+
+<h2>genpack-install — イメージデプロイツール</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack-install">GitHub: wbrxcorp/genpack-install</a></p>
+
+<p>genpack-install は生成されたシステムイメージを物理ストレージに書き込み、ブート可能な状態にするツールです。</p>
+
+<h3>動作モード</h3>
+
+<table>
+<thead>
+<tr><th>モード</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--disk=&lt;device&gt;</code></td><td>物理ディスクへのインストール (パーティショニング + ブートローダー設置)</td></tr>
+<tr><td>セルフアップデート</td><td>稼働中のシステムのイメージをアトミックに入れ替え</td></tr>
+<tr><td><code>--cdrom=&lt;file&gt;</code></td><td>ブータブル ISO 9660 イメージの作成</td></tr>
+<tr><td><code>--zip=&lt;file&gt;</code></td><td>ZIP アーカイブの作成</td></tr>
+</tbody>
+</table>
+
+<h3>マルチアーキテクチャブート対応</h3>
+
+<p>BIOS / UEFI (x86_64, i386, ARM64, RISC-V) / Raspberry Pi の各ブート方式に対応した GRUB ブートローダーを生成・配置します。El Torito によるCD/ISOブートもサポートしています。</p>
+
+<h3>アトミックなセルフアップデート</h3>
+
+<p>稼働中のシステムのイメージ更新は、以下のアトミックなリネーム操作で実現されます:</p>
+
+<div class="update-diagram">
+<div class="step"><span class="from">system</span><span class="arrow">→</span><span class="to">system.cur</span><span class="desc">(現在のイメージを退避)</span></div>
+<div class="step"><span class="from">system.new</span><span class="arrow">→</span><span class="to">system</span><span class="desc">(新しいイメージを有効化)</span></div>
+<div class="step"><span class="from">system.cur</span><span class="arrow">→</span><span class="to">system.old</span><span class="desc">(前世代を保持 = ロールバック可能)</span></div>
+</div>
+
+<hr>
+
+<h2>vm — 仮想マシン管理ツール</h2>
+
+<p><a href="https://github.com/shimarin/vm">GitHub: shimarin/vm</a></p>
+
+<p>vm は genpack で生成したシステムイメージを QEMU/KVM 上で仮想マシンとして実行・管理するためのコマンドラインツールです。</p>
+
+<h3>主要コマンド</h3>
+
+<table>
+<thead>
+<tr><th>コマンド</th><th>機能</th></tr>
+</thead>
+<tbody>
+<tr><td><code>vm run &lt;image&gt;</code></td><td>システムイメージから VM を起動</td></tr>
+<tr><td><code>vm service</code></td><td>vm.ini に基づいて VM をサービスとして実行</td></tr>
+<tr><td><code>vm console &lt;name&gt;</code></td><td>VM のシリアルコンソールに接続</td></tr>
+<tr><td><code>vm stop &lt;name&gt;</code></td><td>QMP プロトコルによるグレースフルシャットダウン</td></tr>
+<tr><td><code>vm list</code></td><td>実行中の VM を一覧表示</td></tr>
+<tr><td><code>vm ssh user@vm</code></td><td>vsock 経由で VM に SSH 接続</td></tr>
+<tr><td><code>vm usb</code></td><td>USB デバイスの列挙 (XPath クエリ対応)</td></tr>
+</tbody>
+</table>
+
+<h3>主な機能</h3>
+
+<ul>
+<li><strong>ネットワーク</strong>: ユーザーモード / ブリッジ / TAP / MACVTAP / SR-IOV / VDE / マルチキャスト</li>
+<li><strong>ディスプレイ</strong>: SPICE / VNC / egl-headless</li>
+<li><strong>GPU</strong>: virtio-gpu 2D / QXL / OpenGL / Vulkan パススルー</li>
+<li><strong>デバイスパススルー</strong>: USB (XPath フィルタリング) / PCI (VFIO)</li>
+<li><strong>ファイル共有</strong>: virtiofs / 9pfs</li>
+<li><strong>通信</strong>: vsock 経由の SSH/SCP</li>
+</ul>
+
+<hr>
+
+<h2>genpack-artifacts — イメージ定義集</h2>
+
+<p><a href="https://github.com/genpack-artifacts">GitHub Organization: genpack-artifacts</a></p>
+
+<p>genpack-artifacts は、genpack ツールチェーンを使って構築する具体的なシステムイメージの定義集です。各アーティファクトは個別のリポジトリとして管理されています。</p>
+
+<h3>アーティファクトの構造</h3>
+
+<p>各アーティファクトは統一されたディレクトリ構造を持ちます:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">artifact-name/</span>
+<ul>
+<li><span class="label">genpack.json5</span> <span class="desc">— 宣言的イメージ定義</span></li>
+<li><span class="label">files/</span> <span class="desc">— ルートファイルシステムにマージされるファイル</span>
+<ul>
+<li><span class="label">build.d/</span> <span class="desc">— ビルド時実行スクリプト</span></li>
+<li><span class="label">etc/</span> <span class="desc">— 設定ファイル</span></li>
+<li><span class="label">boot/</span> <span class="desc">— ブート設定 (grub.cfg 等)</span></li>
+</ul></li>
+<li><span class="label">kernel/</span> <span class="desc">— カーネルカスタマイズ (任意)</span>
+<ul>
+<li><span class="label">config.d/</span> <span class="desc">— カーネル設定フラグメント</span></li>
+</ul></li>
+<li><span class="label">savedconfig/</span> <span class="desc">— Portage savedconfig (アーキテクチャ別)</span></li>
+</ul></li>
+</ul>
+</div>
+
+<h3>アーティファクトの例</h3>
+
+<table>
+<thead>
+<tr><th>カテゴリ</th><th>アーティファクト</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>デスクトップ</strong></td><td><a href="https://github.com/genpack-artifacts/gnome">gnome</a>, <a href="https://github.com/genpack-artifacts/streamer">streamer</a></td><td>GNOME デスクトップ、OBS 配信ワークステーション</td></tr>
+<tr><td><strong>ML/AI</strong></td><td><a href="https://github.com/genpack-artifacts/torch">torch</a></td><td>PyTorch + ROCm/CUDA 機械学習環境</td></tr>
+<tr><td><strong>クラウド</strong></td><td><a href="https://github.com/genpack-artifacts/nextcloud">nextcloud</a>, <a href="https://github.com/genpack-artifacts/owncloud">owncloud</a></td><td>セルフホストクラウドストレージ</td></tr>
+<tr><td><strong>プロジェクト管理</strong></td><td><a href="https://github.com/genpack-artifacts/redmine">redmine</a></td><td>Redmine プロジェクト管理</td></tr>
+<tr><td><strong>ネットワーク</strong></td><td><a href="https://github.com/genpack-artifacts/vpnhub">vpnhub</a>, <a href="https://github.com/genpack-artifacts/walbrix">walbrix</a></td><td>VPN ゲートウェイ、ネットワークアプライアンス</td></tr>
+<tr><td><strong>セキュリティ</strong></td><td><a href="https://github.com/genpack-artifacts/suricata">suricata</a>, <a href="https://github.com/genpack-artifacts/borg">borg</a></td><td>IDS、バックアップサーバー</td></tr>
+<tr><td><strong>組み込み</strong></td><td><a href="https://github.com/genpack-artifacts/camera">camera</a></td><td>モーション検知カメラシステム</td></tr>
+<tr><td><strong>ユーティリティ</strong></td><td><a href="https://github.com/genpack-artifacts/rescue">rescue</a>, <a href="https://github.com/genpack-artifacts/stub">stub</a></td><td>システムリカバリ、最小ビルド環境</td></tr>
+</tbody>
+</table>
+
+<p>最小構成 (rescue: 十数パッケージ) からフルデスクトップ (gnome: 数百パッケージ) まで、全て同じ <code>genpack.json5</code> + <code>files/</code> のパターンで定義されています。</p>
+
+<hr>
+
+<h2>設計思想</h2>
+
+<h3>1. 宣言的イメージ定義 (Infrastructure as Code)</h3>
+
+<p>全てのイメージは <code>genpack.json5</code> で宣言的に定義されます。パッケージ、USE フラグ、ユーザー、サービス、カーネル設定まで 1 ファイルに集約されており、手作業を排除した再現可能なビルドを実現しています。</p>
+
+<h3>2. 不変イメージと柔軟な永続性 (Immutable Image, Flexible Persistence)</h3>
+
+<p>最終成果物は読み取り専用の SquashFS です。システムの更新は既存環境の変更ではなく新しいイメージのビルドとアトミックな入れ替えで行われます。実行時のルートファイルシステムは overlayfs で構成され、データパーティションの有無により upper layer が永続ストレージか tmpfs かが自動的に決まります。データパーティションがない場合は毎回クリーンな状態から起動するため構成ドリフトが原理的に発生せず、データパーティションがある場合はサーバー用途に適した永続的な運用が可能です。</p>
+
+<h3>3. OS とユーザー設定の完全な分離</h3>
+
+<p>OS イメージ (SquashFS) は不変、ユーザー設定 (system.ini) は FAT パーティション上のテキストファイル。この 2 つが完全に分離されているため、OS の更新で設定が失われることがなく、設定変更に Linux の専門知識も不要です。</p>
+
+<h3>4. 毎回起動時の構成適用</h3>
+
+<p>genpack-init は初回だけでなく毎回の起動時に system.ini を読んでシステムを構成します。これにより、system.ini への変更は常に次回起動時に反映されます。さらに、データパーティションを設けないトランジェントモードでは overlayfs の upper layer が tmpfs となるため、実行中の変更は再起動で自動的に消失し、毎回クリーンな状態 + system.ini の設定で起動します。</p>
+
+<h3>5. レイヤードビルドによる最小イメージ</h3>
+
+<p>Lower 層 (ビルド環境) と Upper 層 (ランタイム) を分離し、実行時に不要なコンパイラやヘッダを自然に除外します。</p>
+
+<h3>6. Gentoo の選択</h3>
+
+<p>ベースに Gentoo を採用することで:</p>
+
+<ul>
+<li><strong>USE フラグ</strong> によるパッケージ単位の機能制御で不要な依存を徹底排除</li>
+<li><strong>ソースビルド</strong> でターゲットに最適化されたバイナリを生成</li>
+<li><strong>プロファイル階層</strong> でデプロイ先の差異を体系的に管理</li>
+<li><strong>Portage のオーバーレイ機構</strong> でカスタムパッケージを自然に統合</li>
+</ul>
+
+<h3>7. マルチアーキテクチャ・マルチターゲット</h3>
+
+<p>x86_64 / aarch64 / i686 / riscv64 のアーキテクチャと、BIOS / UEFI / Raspberry Pi のブート方式をツールチェーン全体で横断的にサポートしています。</p>
+
+<hr>
+
+<h2>ワークフロー全体像</h2>
+
+<div class="flow-diagram">
+<ol>
+<li><span class="step-title">設計:</span> genpack.json5 を記述</li>
+<li><span class="step-title">ビルド:</span> genpack build
+<ul>
+<li>Lower層: stage3 + Portage でコンパイル (systemd-nspawn)</li>
+<li>Upper層: ランタイムファイルのみ抽出 + カスタマイズ</li>
+<li>Pack: SquashFS 圧縮 → system-x86_64.squashfs</li>
+</ul></li>
+<li><span class="step-title">デプロイ</span> (いずれかを選択)
+<ul>
+<li>genpack-install --disk=/dev/sdX (物理ディスク)</li>
+<li>genpack-install --cdrom=out.iso (ISO イメージ)</li>
+<li>vm run system-x86_64.squashfs (仮想マシン)</li>
+</ul></li>
+<li><span class="step-title">起動時:</span> genpack-init が system.ini を読んでシステムを構成</li>
+<li><span class="step-title">運用:</span> system.ini を編集して再起動 = 設定変更<br>新イメージでセルフアップデート = OS 更新</li>
+</ol>
+</div>
+
+<hr>
+
+<h2>genpack の独自性について</h2>
+
+<p>NixOS、Yocto、Buildroot、mkosi、OSTree など同様の目的を持つツールは数多く存在しますが、genpack は <strong>「高度に最適化された Linux イメージを、非技術者でも運用できるアプライアンスとして配布する」</strong> という独自の立ち位置を持っています。</p>
+
+<p>その核となるのは、FAT32 上の INI ファイルという意図的に原始的な構成インターフェース、毎回起動時の構成適用とハードウェア検出による動作モードの自動決定、可変システムの代表である Gentoo の不変イメージへの転用、そして pybind11 によるプラグイン型 init といったアイディアの組み合わせです。</p>
+
+<p>既存ツールとの詳しい比較については <a href="uvp.html">genpackが提供する価値の独自性についての対話</a> を参照してください。</p>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-init/tree/721060c832335b240e6bd6998779235e5185468a">wbrxcorp/genpack-init @ 721060c</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-install/tree/4246185bb8c5b32f809fa482a28aa5c39caf5b3e">wbrxcorp/genpack-install @ 4246185</a></li>
+<li><a href="https://github.com/shimarin/vm/tree/2297086ffe725a554e4577ad43d2a74e5e34d97a">shimarin/vm @ 2297086</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

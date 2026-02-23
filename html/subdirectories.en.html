@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Artifact Directory Structure</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="Artifact Directory Structure" />
+<meta property="og:description" content="Roles and build-phase mapping of genpack artifact subdirectories: files/, kernel/, savedconfig/, patches/, env/, and overlay/" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/subdirectories.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Artifact Directory Structure" />
+<meta name="twitter:description" content="Roles and build-phase mapping of genpack artifact subdirectories: files/, kernel/, savedconfig/, patches/, env/, and overlay/" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<h1>Artifact Directory Structure</h1>
+
+<h2>Overview</h2>
+
+<p>A genpack artifact (image definition) is organized around <code>genpack.json5</code> and consists of multiple subdirectories. Each directory is processed during a specific build phase, defining the image contents from Portage configuration to custom file placement and build script execution.</p>
+
+<h2>Directory Structure Overview</h2>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">artifact-name/</span>
+<ul>
+<li><span class="label">genpack.json5</span> <span class="desc">— Declarative image definition (required)</span></li>
+<li><span class="label">files/</span> <span class="desc">— Files merged into the root filesystem</span>
+<ul>
+<li><span class="label">build.d/</span> <span class="desc">— Build-time scripts (not included in the final image)</span></li>
+<li><span class="label">etc/</span> <span class="desc">— Configuration files</span></li>
+<li><span class="label">usr/</span> <span class="desc">— Libraries, binaries, systemd units</span></li>
+<li><span class="label">var/</span> <span class="desc">— Web content, spool, etc.</span></li>
+<li><span class="label">root/</span> <span class="desc">— root home directory</span></li>
+</ul></li>
+<li><span class="label">kernel/</span> <span class="desc">— Kernel configuration</span>
+<ul>
+<li><span class="label">config.d/</span> <span class="desc">— Kernel config fragments</span></li>
+</ul></li>
+<li><span class="label">savedconfig/</span> <span class="desc">— Portage savedconfig (per architecture)</span></li>
+<li><span class="label">patches/</span> <span class="desc">— Portage package patches</span></li>
+<li><span class="label">env/</span> <span class="desc">— Portage package environment settings</span></li>
+<li><span class="label">overlay/</span> <span class="desc">— Local Portage overlay</span></li>
+</ul></li>
+</ul>
+</div>
+
+<p>All subdirectories are optional. At minimum, an artifact can be defined with only <code>genpack.json5</code>.</p>
+
+<h2>Correspondence with Build Phases</h2>
+
+<p>The genpack build process consists of two phases: the Lower layer (compilation environment) and the Upper layer (runtime environment). It is important to understand which phase processes each directory.</p>
+
+<table>
+<thead>
+<tr><th>Directory</th><th>Phase</th><th>Copy Destination</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>savedconfig/</code></td><td>Lower</td><td><code>/etc/portage/savedconfig/</code></td><td>Custom build settings for packages</td></tr>
+<tr><td><code>patches/</code></td><td>Lower</td><td><code>/etc/portage/patches/</code></td><td>Applying patches to packages</td></tr>
+<tr><td><code>kernel/</code></td><td>Lower</td><td><code>/etc/kernel/</code></td><td>Kernel build configuration</td></tr>
+<tr><td><code>env/</code></td><td>Lower</td><td><code>/etc/portage/env/</code></td><td>Per-package build environment variables</td></tr>
+<tr><td><code>overlay/</code></td><td>Lower</td><td><code>/var/db/repos/genpack-local-overlay/</code></td><td>Custom ebuilds</td></tr>
+<tr><td><code>files/</code></td><td>Upper</td><td><code>/</code> (root)</td><td>Custom file placement</td></tr>
+</tbody>
+</table>
+
+<p>The directories processed in the Lower phase are all related to Portage (the package manager) and are referenced during package compilation. Only <code>files/</code> is processed in the Upper phase, placing files directly into the final image.</p>
+
+<h2>files/ — Custom Files and Build Scripts</h2>
+
+<p><code>files/</code> is the most important directory for artifact customization. Files placed under this directory are recursively copied into the root filesystem during Upper layer construction.</p>
+
+<h3>Copy Mechanism</h3>
+
+<p>During the Upper phase, files are processed as follows:</p>
+
+<pre><code class="language-bash">cp -rdv /mnt/host/files/. /</code></pre>
+
+<ul>
+<li><code>files/etc/systemd/system/myservice.service</code> → <code>/etc/systemd/system/myservice.service</code></li>
+<li><code>files/usr/bin/myscript</code> → <code>/usr/bin/myscript</code></li>
+<li><code>files/root/.bashrc</code> → <code>/root/.bashrc</code></li>
+</ul>
+
+<p>Symbolic links are preserved, and file permissions are maintained.</p>
+
+<h3>Processing Order</h3>
+
+<p>The processing order within the Upper phase is as follows:</p>
+
+<ol>
+<li>Selectively copy runtime files from the Lower layer</li>
+<li>Execute package scripts (from genpack-overlay)</li>
+<li>Create groups (<code>groups</code> in <code>genpack.json5</code>)</li>
+<li>Create users (<code>users</code> in <code>genpack.json5</code>)</li>
+<li><strong>Copy the contents of <code>files/</code> to the root</strong></li>
+<li><strong>Execute build scripts in <code>files/build.d/</code></strong></li>
+<li>Execute <code>setup_commands</code></li>
+<li>Enable services (<code>services</code> in <code>genpack.json5</code>)</li>
+</ol>
+
+<p>This ordering allows build scripts to operate on the assumption that files copied from <code>files/</code> and user definitions are already in place.</p>
+
+<h3>files/build.d/ — Build Scripts</h3>
+
+<p>Scripts in <code>files/build.d/</code> are executed during the Upper phase and <strong>are not included in the final image</strong> (they are excluded during SquashFS generation). Use them for customizations that cannot be achieved through package installation or file copying alone.</p>
+
+<h4>Execution Order</h4>
+
+<p>Scripts are executed in <strong>alphabetical order</strong> by filename. Use numeric prefixes to control the execution order:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">01-setup-database.sh</span></li>
+<li><span class="label">02-configure-app.sh</span></li>
+<li><span class="label">03-download-plugins.sh</span></li>
+</ul></li>
+</ul>
+</div>
+
+<h4>Automatic Interpreter Detection</h4>
+
+<p>The script interpreter is automatically determined from the file extension and execute permission:</p>
+
+<table>
+<thead>
+<tr><th>Condition</th><th>Execution Method</th></tr>
+</thead>
+<tbody>
+<tr><td>Has execute permission</td><td>Executed directly (follows the shebang)</td></tr>
+<tr><td><code>.sh</code> extension (no execute permission)</td><td>Executed with <code>/bin/sh</code></td></tr>
+<tr><td><code>.py</code> extension (no execute permission)</td><td>Executed with <code>/usr/bin/python</code></td></tr>
+<tr><td>Other extensions (no execute permission)</td><td>Error</td></tr>
+</tbody>
+</table>
+
+<h4>Per-User Execution</h4>
+
+<p>If you create a subdirectory within <code>build.d/</code>, the scripts inside it are executed as the user whose name matches the subdirectory name:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">setup-system.sh</span> <span class="desc">— Executed as root</span></li>
+<li><span class="label">user/</span> <span class="desc">— Executed as the "user" user</span>
+<ul>
+<li><span class="label">setup-dotfiles.sh</span></li>
+<li><span class="label">install-extensions.py</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>The subdirectory name must match an existing user on the system. The <code>HOME</code> environment variable is set to that user's home directory.</p>
+
+<h4>Available Environment Variables</h4>
+
+<table>
+<thead>
+<tr><th>Variable</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ARTIFACT</code></td><td>Value of the <code>name</code> field in <code>genpack.json5</code></td></tr>
+<tr><td><code>VARIANT</code></td><td>Name of the variant being built (only when specified)</td></tr>
+</tbody>
+</table>
+
+<h4>Typical Use Cases</h4>
+
+<p><strong>Downloading and installing software:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# Download a binary from a GitHub release
+ARCH=$(uname -m)
+curl -Lo /usr/bin/tool \
+  "https://github.com/org/tool/releases/latest/download/tool-${ARCH}"
+chmod +x /usr/bin/tool</code></pre>
+
+<p><strong>Editing configuration files:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# Disable the Apache SSL module
+sed -i 's/-D SSL //' /etc/conf.d/apache2</code></pre>
+
+<p><strong>Database initialization:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# Create a MySQL database and user
+/etc/init.d/mysql start
+mysql -e "CREATE DATABASE IF NOT EXISTS myapp;"
+mysql -e "GRANT ALL ON myapp.* TO 'myapp'@'localhost';"
+/etc/init.d/mysql stop</code></pre>
+
+<p><strong>Building from source:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# Static build of llmnrd
+cd /tmp
+git clone --depth 1 https://github.com/tklauser/llmnrd
+cd llmnrd
+make LDFLAGS="-static"
+cp llmnrd /usr/bin/
+cd / &amp;&amp; rm -rf /tmp/llmnrd</code></pre>
+
+<h3>Typical files/ Structures</h3>
+
+<p>Server artifact:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">files/</span>
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">apache-enable-php.sh</span></li>
+<li><span class="label">apache-ssl.sh</span></li>
+<li><span class="label">setup-app.sh</span></li>
+</ul></li>
+<li><span class="label">etc/</span>
+<ul>
+<li><span class="label">logrotate.d/</span>
+<ul>
+<li><span class="label">myapp</span></li>
+</ul></li>
+<li><span class="label">systemd/system/</span>
+<ul>
+<li><span class="label">myapp.service</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">usr/</span>
+<ul>
+<li><span class="label">bin/</span>
+<ul>
+<li><span class="label">myapp-helper</span></li>
+</ul></li>
+<li><span class="label">lib/systemd/system/</span>
+<ul>
+<li><span class="label">myapp-backup.timer</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">var/www/</span>
+<ul>
+<li><span class="label">myapp/</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>Desktop artifact:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">files/</span>
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">enable-automatic-login</span></li>
+<li><span class="label">enable-noto-cjk.sh</span></li>
+<li><span class="label">enable-pipewire-for-all-users</span></li>
+</ul></li>
+<li><span class="label">etc/</span>
+<ul>
+<li><span class="label">polkit-1/rules.d/</span></li>
+<li><span class="label">xdg/autostart/</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>Embedded artifact:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">files/</span>
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">setup.sh</span></li>
+</ul></li>
+<li><span class="label">etc/</span>
+<ul>
+<li><span class="label">sysctl.d/</span>
+<ul>
+<li><span class="label">tuning.conf</span></li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<h2>kernel/ — Kernel Configuration</h2>
+
+<p>This directory is for customizing kernel build settings. It is copied to <code>/etc/kernel/</code> during the Lower phase and referenced when building the kernel package.</p>
+
+<h3>config.d/ — Config Fragments</h3>
+
+<p>Placing <code>.config</code> files under <code>kernel/config.d/</code> merges them into the kernel configuration. Use this to enable or disable specific kernel options.</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">kernel/</span>
+<ul>
+<li><span class="label">config.d/</span>
+<ul>
+<li><span class="label">unset.config</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>Example of <code>unset.config</code> (from the stub artifact, disabling unnecessary features):</p>
+
+<pre><code># CONFIG_HIBERNATION is not set
+# CONFIG_SUSPEND is not set
+# CONFIG_XEN is not set
+# CONFIG_NUMA is not set
+# CONFIG_DEBUG_KERNEL is not set
+# CONFIG_KEXEC_SIG is not set</code></pre>
+
+<h2>savedconfig/ — Portage savedconfig</h2>
+
+<p>This directory holds configuration for packages that reference custom configuration files at build time, such as the kernel. It is copied to <code>/etc/portage/savedconfig/</code> during the Lower phase.</p>
+
+<h3>Per-Architecture Layout</h3>
+
+<p>savedconfig uses separate subdirectories for each architecture. The directory names correspond to Gentoo's CHOST values:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">savedconfig/</span>
+<ul>
+<li><span class="label">aarch64-unknown-linux-gnu/</span>
+<ul>
+<li><span class="label">sys-kernel/</span>
+<ul>
+<li><span class="label">gentoo-kernel</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">riscv64-unknown-linux-gnu/</span>
+<ul>
+<li><span class="label">sys-kernel/</span>
+<ul>
+<li><span class="label">gentoo-kernel</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">x86_64-pc-linux-gnu/</span>
+<ul>
+<li><span class="label">sys-kernel/</span>
+<ul>
+<li><span class="label">gentoo-kernel</span></li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>This allows architecture-specific kernel configurations to be applied when building images for multiple architectures from the same artifact. Portage references this configuration when the <code>savedconfig</code> USE flag is set for the kernel package.</p>
+
+<h2>patches/ — Portage Package Patches</h2>
+
+<p>This directory is for applying patches to specific packages. It is copied to <code>/etc/portage/patches/</code> during the Lower phase and applied through Portage's user patches feature.</p>
+
+<h3>Directory Structure</h3>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">patches/</span>
+<ul>
+<li><span class="label">&lt;category&gt;/&lt;package&gt;/</span>
+<ul>
+<li><span class="label">&lt;patchname&gt;.patch</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>Example:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">patches/</span>
+<ul>
+<li><span class="label">dev-libs/weston/</span>
+<ul>
+<li><span class="label">default-output-and-autolaunch-args.patch</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>In this case, the patch is automatically applied when the <code>dev-libs/weston</code> package is built. If a version-specific patch is needed, you can use <code>&lt;package&gt;-&lt;version&gt;/</code> as the directory name.</p>
+
+<h2>env/ — Portage Package Environment Settings</h2>
+
+<p>This directory is for setting environment variables during the build of specific packages. It is copied to <code>/etc/portage/env/</code> during the Lower phase.</p>
+
+<h3>Usage</h3>
+
+<p>Create a configuration file and assign it to a package using the <code>env</code> field in <code>genpack.json5</code>:</p>
+
+<p><code>env/torch_cuda.conf</code>:</p>
+
+<pre><code class="language-bash">CUDA_HOME="/opt/cuda"
+MAKEOPTS="-j4"</code></pre>
+
+<p><code>genpack.json5</code>:</p>
+
+<pre><code class="language-json5">{
+  env: {
+    "sci-libs/pytorch": "torch_cuda.conf"
+  }
+}</code></pre>
+
+<h2>overlay/ — Local Portage Overlay</h2>
+
+<p>This directory is for adding custom packages (ebuilds) that are not available in the official repositories or genpack-overlay. It is copied to <code>/var/db/repos/genpack-local-overlay/</code> during the Lower phase, and repos.conf and metadata are automatically generated.</p>
+
+<h3>Directory Structure</h3>
+
+<p>It follows the standard Gentoo overlay structure:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">overlay/</span>
+<ul>
+<li><span class="label">&lt;category&gt;/&lt;package&gt;/</span>
+<ul>
+<li><span class="label">Manifest</span></li>
+<li><span class="label">&lt;package&gt;-&lt;version&gt;.ebuild</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>Example:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">overlay/</span>
+<ul>
+<li><span class="label">media-libs/virglrenderer/</span>
+<ul>
+<li><span class="label">Manifest</span></li>
+<li><span class="label">virglrenderer-9999.ebuild</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>genpack automatically generates <code>metadata/layout.conf</code>, <code>profiles/repo_name</code>, and <code>repos.conf</code>, so you do not need to prepare these files manually.</p>
+
+<h2>Rebuild Triggers</h2>
+
+<p>Whether a Lower layer rebuild is necessary is determined by the modification timestamps of the following files and directories:</p>
+
+<ul>
+<li><code>genpack.json5</code> (or <code>genpack.json</code>)</li>
+<li><code>savedconfig/</code></li>
+<li><code>patches/</code></li>
+<li><code>kernel/</code></li>
+<li><code>env/</code></li>
+<li><code>overlay/</code></li>
+</ul>
+
+<p><strong>The <code>files/</code> directory is not included in the Lower layer rebuild triggers.</strong> Since <code>files/</code> is only processed during the Upper phase, changes to <code>files/</code> are reflected through an Upper layer rebuild.</p>
+
+<h2>Archive</h2>
+
+<p>Running the <code>genpack archive</code> command generates a <code>genpack-&lt;name&gt;.tar.gz</code> containing <code>genpack.json5</code> and all subdirectories (<code>files/</code>, <code>savedconfig/</code>, <code>patches/</code>, <code>kernel/</code>, <code>env/</code>, <code>overlay/</code>). This allows you to distribute artifact definitions.</p>
+
+<section class="source-references">
+<h2>Source References</h2>
+<p>This document was written based on the following repository snapshots:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.en.html">genpack — A Gentoo-Based Immutable System Image Build Toolchain</a></li>
+<li><a href="json5.en.html">genpack.json5 Specification Reference</a></li>
+<li><a href="profiles.en.html">genpack-overlay Profile Reference</a></li>
+<li><a href="cli.en.html">genpack CLI Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+<li><a href="artifact-stub.en.html">stub — Multi-Distribution Installer and kexec Boot Loader for VMs</a></li>
+<li><a href="uvp.en.html">A Conversation with Gemini about genpack's Unique Value Proposition</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

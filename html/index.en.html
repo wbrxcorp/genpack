@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack — A Gentoo-Based Immutable System Image Build Toolchain</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack — A Gentoo-Based Immutable System Image Build Toolchain" />
+<meta property="og:description" content="A suite of tools for declaratively building, distributing, and booting purpose-built immutable system images based on Gentoo Linux." />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/index.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack — A Gentoo-Based Immutable System Image Build Toolchain" />
+<meta name="twitter:description" content="A suite of tools for declaratively building, distributing, and booting purpose-built immutable system images based on Gentoo Linux." />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<h1>genpack — A Gentoo-Based Immutable System Image Build Toolchain</h1>
+
+<h2>Introduction</h2>
+
+<p>genpack is a suite of tools for declaratively building, distributing, and booting purpose-built <strong>immutable system images</strong> based on Gentoo Linux. Rather than the traditional approach of installing an OS and then customizing it, genpack follows an image factory model where <strong>an entire OS image is built from a blueprint (JSON5)</strong>.</p>
+
+<p>What Docker achieved for application containers, genpack aims to achieve at the <strong>entire OS level</strong> — and across <strong>bare metal, virtual machines, and embedded devices</strong>.</p>
+
+<h2>Toolchain Architecture</h2>
+
+<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.3em; text-align:center; font-size:0.82em; color:var(--fg-secondary); font-weight:600; margin-top:1em"><span>Design / Definition</span><span>Build</span><span>Distribution / Runtime</span></div>
+<div class="arch-grid">
+<div class="box"><div class="name">genpack-overlay</div><div class="desc">Gentoo overlay:<br>profiles &amp; ebuilds</div></div>
+<div class="box"><div class="name">genpack</div><div class="desc">Image builder</div></div>
+<div class="box"><div class="name">genpack-install</div><div class="desc">Disk write / ISO /<br>self-update</div></div>
+<div class="box"><div class="name">genpack-artifacts</div><div class="desc">Image definition collection</div></div>
+<div class="box"><div class="name">genpack-init</div><div class="desc">Boot-time<br>provisioning</div></div>
+<div class="box"><div class="name">vm</div><div class="desc">Run as a VM on<br>QEMU/KVM</div></div>
+</div>
+
+<h3>Component Overview</h3>
+
+<table>
+<thead>
+<tr><th>Component</th><th>Language</th><th>Role</th><th>Repository</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>genpack</strong></td><td>Python + C++</td><td>Generates SquashFS images from JSON5 configuration</td><td><a href="https://github.com/wbrxcorp/genpack">wbrxcorp/genpack</a></td></tr>
+<tr><td><strong>genpack-overlay</strong></td><td>Gentoo ebuild/profile</td><td>Package definitions, profile hierarchy, and initialization scripts</td><td><a href="https://github.com/wbrxcorp/genpack-overlay">wbrxcorp/genpack-overlay</a></td></tr>
+<tr><td><strong>genpack-init</strong></td><td>C++ + Python (pybind11)</td><td>Configures the system at every boot based on system.ini</td><td><a href="https://github.com/wbrxcorp/genpack-init">wbrxcorp/genpack-init</a></td></tr>
+<tr><td><strong>genpack-install</strong></td><td>C++</td><td>Deploys images to disk/ISO/ZIP, handles self-updates</td><td><a href="https://github.com/wbrxcorp/genpack-install">wbrxcorp/genpack-install</a></td></tr>
+<tr><td><strong>vm</strong></td><td>C++</td><td>Runs and manages genpack images as QEMU/KVM virtual machines</td><td><a href="https://github.com/shimarin/vm">shimarin/vm</a></td></tr>
+<tr><td><strong>genpack-artifacts</strong></td><td>JSON5 + shell scripts</td><td>A collection of concrete image definitions</td><td><a href="https://github.com/genpack-artifacts">genpack-artifacts</a> (GitHub Organization)</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2>genpack — The Image Builder</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack">GitHub: wbrxcorp/genpack</a></p>
+
+<p>genpack is the core build engine of the toolchain. It takes a declarative configuration file called <code>genpack.json5</code> as input and produces an optimized SquashFS image using Gentoo Linux's stage3 and Portage.</p>
+
+<h3>How It Builds: Layered Architecture</h3>
+
+<p>genpack uses a <strong>two-layer (lower/upper) build structure</strong>.</p>
+
+<ol>
+<li><strong>Lower layer</strong>: A complete build environment based on Gentoo stage3, where all packages are compiled and installed inside a <code>systemd-nspawn</code> container</li>
+<li><strong>Upper layer</strong>: Selectively copies only runtime-necessary files from the lower layer, then performs finishing steps such as user creation, service enablement, and custom file placement</li>
+<li><strong>Packing</strong>: Compresses the upper layer into a SquashFS archive to produce the final image</li>
+</ol>
+
+<p>This design ensures that compilers, header files, and other build-only artifacts remain in the lower layer and never make it into the final image. A minimal runtime image is the natural result.</p>
+
+<h3>Declarative Configuration</h3>
+
+<pre><code class="language-json5">{
+  name: "nextcloud",
+  profile: "paravirt",
+  packages: [
+    "www-apps/nextcloud",
+    "dev-db/mysql",
+    "dev-lang/php",
+    "net-misc/redis"
+  ],
+  services: ["apache2", "mysqld", "redis"],
+  users: [{ name: "nextcloud", uid: 1000 }],
+  use: {
+    "dev-lang/php": "+mysql +curl +gd +xml +zip"
+  },
+  compression: "xz"
+}</code></pre>
+
+<p>Everything — package lists, enabled services, user definitions, USE flags, and kernel configuration — is consolidated in this single file. This eliminates manual system construction and delivers <strong>fully reproducible builds</strong>.</p>
+
+<h3>Key Commands</h3>
+
+<table>
+<thead>
+<tr><th>Command</th><th>Function</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack build</code></td><td>Full build (lower -> upper -> pack)</td></tr>
+<tr><td><code>genpack lower</code></td><td>Build/rebuild the lower layer</td></tr>
+<tr><td><code>genpack upper</code></td><td>Build/rebuild the upper layer</td></tr>
+<tr><td><code>genpack pack</code></td><td>Generate the SquashFS image</td></tr>
+<tr><td><code>genpack bash</code></td><td>Interactive shell inside the lower layer</td></tr>
+<tr><td><code>genpack archive</code></td><td>Create a tar.gz archive of the configuration</td></tr>
+</tbody>
+</table>
+
+<h3>Supported Architectures</h3>
+
+<p>x86_64, aarch64 (ARM64), i686, and riscv64 are supported. Architecture-specific settings can be managed in the <code>arch</code> section of <code>genpack.json5</code>.</p>
+
+<hr>
+
+<h2>genpack-overlay — The Gentoo Overlay</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack-overlay">GitHub: wbrxcorp/genpack-overlay</a></p>
+
+<p>genpack-overlay is a Gentoo overlay that extends the Portage package management system. It provides metapackages that serve as building blocks for genpack images, along with a profile hierarchy that abstracts away differences between deployment targets.</p>
+
+<h3>Profile Hierarchy</h3>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">genpack/base</span> <span class="desc">(common to all environments: kernel, init, base tools)</span>
+<ul>
+<li><span class="label">genpack/systemimg</span> <span class="desc">(bare metal: hardware detection, storage tools)</span>
+<ul>
+<li><span class="label">systemimg/baremetal</span> <span class="desc">(BIOS/UEFI, device drivers)</span></li>
+</ul></li>
+<li><span class="label">genpack/paravirt</span> <span class="desc">(virtualized: QEMU guest agent, virtio)</span></li>
+<li><span class="label">genpack/gnome</span> <span class="desc">(GNOME desktop)</span></li>
+<li><span class="label">genpack/weston</span> <span class="desc">(Wayland compositor)</span></li>
+</ul></li>
+</ul>
+</div>
+
+<p>Image definitions simply specify <code>profile: "paravirt"</code> or <code>profile: "gnome/baremetal"</code>, and the appropriate base environment is automatically selected.</p>
+
+<h3>Package Scripts</h3>
+
+<p>Each package can install initialization scripts under <code>/usr/lib/genpack/package-scripts/</code>. This is where package-specific setup tasks are defined — things like MySQL data directory initialization, Docker storage configuration, and SSH host key generation.</p>
+
+<hr>
+
+<h2>genpack-init — The Boot-Time Provisioning System</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack-init">GitHub: wbrxcorp/genpack-init</a></p>
+
+<p>genpack-init is a hybrid C++ and Python (pybind11) initialization system. It starts as PID 1 and, <strong>at every boot</strong>, reads <code>system.ini</code> from the boot partition and executes a series of Python scripts to configure the system.</p>
+
+<h3>Boot Sequence</h3>
+
+<ol>
+<li>Starts as PID 1</li>
+<li>Reads <code>/run/initramfs/boot/system.ini</code> (located on a FAT partition)</li>
+<li>Calls the <code>configure(ini)</code> function in each module under <code>/usr/lib/genpack-init/*.py</code></li>
+<li>Applies hostname, network, storage, service configuration, and more</li>
+<li>Hands off to the real init (<code>/sbin/init</code> = systemd) via exec</li>
+</ol>
+
+<h3>Native Capabilities Exposed to Python</h3>
+
+<p>Through pybind11, genpack-init exposes the following low-level operations to Python scripts:</p>
+
+<ul>
+<li><strong>Disk operations</strong>: Partition information retrieval, parted, mkfs, mount/umount</li>
+<li><strong>Platform detection</strong>: Raspberry Pi / QEMU identification</li>
+<li><strong>Filesystem operations</strong>: chown, chmod, chgrp</li>
+<li><strong>Kernel modules</strong>: coldplug (automatic loading via modalias)</li>
+<li><strong>systemd services</strong>: enable/disable</li>
+</ul>
+
+<h3>The system.ini-Driven Architecture</h3>
+
+<p>The most important design feature of genpack-init is that <strong>the entire system behavior can be customized through a single <code>system.ini</code> file on a FAT partition</strong>.</p>
+
+<div class="partition-diagram">
+<div class="part">
+<div class="part-title">Partition 1: FAT32 (boot)</div>
+<div class="part-files">
+EFI/ <span class="desc">— bootloader</span><br>
+system.img <span class="desc">— SquashFS OS image</span><br>
+<span class="highlight">system.ini</span> <span class="desc">— the only file users edit</span>
+</div>
+</div>
+<div class="part">
+<div class="part-title">Partition 2: Data [optional]</div>
+</div>
+</div>
+
+<h3>Root Filesystem Construction: Flexible Persistence via overlayfs</h3>
+
+<p>The genpack image's initramfs detects at boot time whether a data partition exists on the boot storage (or, in the case of QEMU, a dedicated data virtual disk) and dynamically determines the upper layer of the overlayfs root filesystem:</p>
+
+<ul>
+<li><strong>Data partition present</strong> -> The upper layer uses persistent storage. File changes made at runtime survive reboots.</li>
+<li><strong>No data partition</strong> -> The upper layer uses tmpfs. Runtime changes are lost on reboot, and the system starts fresh every time (transient mode).</li>
+</ul>
+
+<p>This mechanism allows a single image to exhibit different behaviors depending on the deployment configuration. A setup without a data partition enables "reset every time" operation suitable for kiosk terminals or demo environments, while a setup with a data partition supports persistent operation suitable for servers. In either case, genpack-init reads system.ini at every boot to configure the system, so changes to system.ini always take effect at the next boot.</p>
+
+<h3>Benefits of system.ini</h3>
+
+<ul>
+<li><strong>Anyone can change the configuration</strong>: FAT32 can be read and written from Windows, macOS, and Linux alike. The INI format can be edited in Notepad. No Linux expertise required.</li>
+<li><strong>Complete separation of OS immutability and configuration mutability</strong>: The SquashFS image is read-only; all configuration lives in system.ini. Settings never scatter across /etc.</li>
+<li><strong>Configuration applied at every boot</strong>: genpack-init reads system.ini and configures the system at every boot. Changes to system.ini are guaranteed to take effect at the next startup.</li>
+<li><strong>Multi-purpose deployment from a single image</strong>: The same image can be deployed for different purposes using different system.ini files.</li>
+<li><strong>Recovery through physical access</strong>: Even if a network misconfiguration locks you out, you can pull the storage device and fix system.ini on the FAT partition.</li>
+<li><strong>OS updates independent of configuration</strong>: Replacing the image leaves system.ini untouched. The perennial problem of config file overwrites during updates simply does not exist.</li>
+</ul>
+
+<hr>
+
+<h2>genpack-install — The Image Deployment Tool</h2>
+
+<p><a href="https://github.com/wbrxcorp/genpack-install">GitHub: wbrxcorp/genpack-install</a></p>
+
+<p>genpack-install writes generated system images to physical storage and makes them bootable.</p>
+
+<h3>Operating Modes</h3>
+
+<table>
+<thead>
+<tr><th>Mode</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--disk=&lt;device&gt;</code></td><td>Install to a physical disk (partitioning + bootloader setup)</td></tr>
+<tr><td>Self-update</td><td>Atomically replace the image on a running system</td></tr>
+<tr><td><code>--cdrom=&lt;file&gt;</code></td><td>Create a bootable ISO 9660 image</td></tr>
+<tr><td><code>--zip=&lt;file&gt;</code></td><td>Create a ZIP archive</td></tr>
+</tbody>
+</table>
+
+<h3>Multi-Architecture Boot Support</h3>
+
+<p>Generates and installs GRUB bootloaders for BIOS / UEFI (x86_64, i386, ARM64, RISC-V) / Raspberry Pi boot methods. El Torito CD/ISO booting is also supported.</p>
+
+<h3>Atomic Self-Update</h3>
+
+<p>Image updates on a running system are performed through atomic rename operations:</p>
+
+<div class="update-diagram">
+<div class="step"><span class="from">system</span><span class="arrow">→</span><span class="to">system.cur</span><span class="desc">(back up the current image)</span></div>
+<div class="step"><span class="from">system.new</span><span class="arrow">→</span><span class="to">system</span><span class="desc">(activate the new image)</span></div>
+<div class="step"><span class="from">system.cur</span><span class="arrow">→</span><span class="to">system.old</span><span class="desc">(keep the previous generation = rollback possible)</span></div>
+</div>
+
+<hr>
+
+<h2>vm — The Virtual Machine Management Tool</h2>
+
+<p><a href="https://github.com/shimarin/vm">GitHub: shimarin/vm</a></p>
+
+<p>vm is a command-line tool for running and managing genpack system images as virtual machines on QEMU/KVM.</p>
+
+<h3>Key Commands</h3>
+
+<table>
+<thead>
+<tr><th>Command</th><th>Function</th></tr>
+</thead>
+<tbody>
+<tr><td><code>vm run &lt;image&gt;</code></td><td>Boot a VM from a system image</td></tr>
+<tr><td><code>vm service</code></td><td>Run VMs as services based on vm.ini</td></tr>
+<tr><td><code>vm console &lt;name&gt;</code></td><td>Connect to a VM's serial console</td></tr>
+<tr><td><code>vm stop &lt;name&gt;</code></td><td>Graceful shutdown via the QMP protocol</td></tr>
+<tr><td><code>vm list</code></td><td>List running VMs</td></tr>
+<tr><td><code>vm ssh user@vm</code></td><td>SSH into a VM over vsock</td></tr>
+<tr><td><code>vm usb</code></td><td>Enumerate USB devices (with XPath query support)</td></tr>
+</tbody>
+</table>
+
+<h3>Key Features</h3>
+
+<ul>
+<li><strong>Networking</strong>: User mode / bridge / TAP / MACVTAP / SR-IOV / VDE / multicast</li>
+<li><strong>Display</strong>: SPICE / VNC / egl-headless</li>
+<li><strong>GPU</strong>: virtio-gpu 2D / QXL / OpenGL / Vulkan passthrough</li>
+<li><strong>Device passthrough</strong>: USB (XPath filtering) / PCI (VFIO)</li>
+<li><strong>File sharing</strong>: virtiofs / 9pfs</li>
+<li><strong>Communication</strong>: SSH/SCP over vsock</li>
+</ul>
+
+<hr>
+
+<h2>genpack-artifacts — The Image Definition Collection</h2>
+
+<p><a href="https://github.com/genpack-artifacts">GitHub Organization: genpack-artifacts</a></p>
+
+<p>genpack-artifacts is a collection of concrete system image definitions built using the genpack toolchain. Each artifact is managed as a separate repository.</p>
+
+<h3>Artifact Structure</h3>
+
+<p>Every artifact follows a uniform directory layout:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">artifact-name/</span>
+<ul>
+<li><span class="label">genpack.json5</span> <span class="desc">— Declarative image definition</span></li>
+<li><span class="label">files/</span> <span class="desc">— Files merged into the root filesystem</span>
+<ul>
+<li><span class="label">build.d/</span> <span class="desc">— Scripts executed at build time</span></li>
+<li><span class="label">etc/</span> <span class="desc">— Configuration files</span></li>
+<li><span class="label">boot/</span> <span class="desc">— Boot configuration (grub.cfg, etc.)</span></li>
+</ul></li>
+<li><span class="label">kernel/</span> <span class="desc">— Kernel customization (optional)</span>
+<ul>
+<li><span class="label">config.d/</span> <span class="desc">— Kernel config fragments</span></li>
+</ul></li>
+<li><span class="label">savedconfig/</span> <span class="desc">— Portage savedconfig (per-architecture)</span></li>
+</ul></li>
+</ul>
+</div>
+
+<h3>Example Artifacts</h3>
+
+<table>
+<thead>
+<tr><th>Category</th><th>Artifact</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Desktop</strong></td><td><a href="https://github.com/genpack-artifacts/gnome">gnome</a>, <a href="https://github.com/genpack-artifacts/streamer">streamer</a></td><td>GNOME desktop, OBS streaming workstation</td></tr>
+<tr><td><strong>ML/AI</strong></td><td><a href="https://github.com/genpack-artifacts/torch">torch</a></td><td>PyTorch + ROCm/CUDA machine learning environment</td></tr>
+<tr><td><strong>Cloud</strong></td><td><a href="https://github.com/genpack-artifacts/nextcloud">nextcloud</a>, <a href="https://github.com/genpack-artifacts/owncloud">owncloud</a></td><td>Self-hosted cloud storage</td></tr>
+<tr><td><strong>Project Management</strong></td><td><a href="https://github.com/genpack-artifacts/redmine">redmine</a></td><td>Redmine project management</td></tr>
+<tr><td><strong>Networking</strong></td><td><a href="https://github.com/genpack-artifacts/vpnhub">vpnhub</a>, <a href="https://github.com/genpack-artifacts/walbrix">walbrix</a></td><td>VPN gateway, network appliance</td></tr>
+<tr><td><strong>Security</strong></td><td><a href="https://github.com/genpack-artifacts/suricata">suricata</a>, <a href="https://github.com/genpack-artifacts/borg">borg</a></td><td>IDS, backup server</td></tr>
+<tr><td><strong>Embedded</strong></td><td><a href="https://github.com/genpack-artifacts/camera">camera</a></td><td>Motion-detection camera system</td></tr>
+<tr><td><strong>Utility</strong></td><td><a href="https://github.com/genpack-artifacts/rescue">rescue</a>, <a href="https://github.com/genpack-artifacts/stub">stub</a></td><td>System recovery, minimal build environment</td></tr>
+</tbody>
+</table>
+
+<p>From a minimal configuration (rescue: a dozen or so packages) to a full desktop (gnome: hundreds of packages), everything is defined using the same <code>genpack.json5</code> + <code>files/</code> pattern.</p>
+
+<hr>
+
+<h2>Design Philosophy</h2>
+
+<h3>1. Declarative Image Definition (Infrastructure as Code)</h3>
+
+<p>Every image is declaratively defined in <code>genpack.json5</code>. Packages, USE flags, users, services, and kernel configuration are all consolidated in a single file, eliminating manual steps and delivering reproducible builds.</p>
+
+<h3>2. Immutable Image, Flexible Persistence</h3>
+
+<p>The final artifact is a read-only SquashFS image. System updates are performed not by modifying the existing environment, but by building a new image and atomically swapping it in. The runtime root filesystem is composed using overlayfs, and whether the upper layer is backed by persistent storage or tmpfs is automatically determined by the presence or absence of a data partition. Without a data partition, the system boots clean every time, making configuration drift impossible by design. With a data partition, persistent operation suitable for server workloads is supported.</p>
+
+<h3>3. Complete Separation of OS and User Configuration</h3>
+
+<p>The OS image (SquashFS) is immutable; user configuration (system.ini) is a text file on a FAT partition. Because the two are completely separate, OS updates never overwrite configuration, and changing settings requires no Linux expertise.</p>
+
+<h3>4. Configuration Applied at Every Boot</h3>
+
+<p>genpack-init reads system.ini and configures the system not just on the first boot, but at every boot. This means changes to system.ini always take effect at the next startup. Furthermore, in transient mode (no data partition), the overlayfs upper layer is tmpfs, so runtime changes are automatically discarded on reboot — the system always starts from a clean state plus whatever system.ini specifies.</p>
+
+<h3>5. Minimal Images Through Layered Builds</h3>
+
+<p>By separating the lower layer (build environment) from the upper layer (runtime), compilers and headers that are unnecessary at runtime are naturally excluded.</p>
+
+<h3>6. Why Gentoo</h3>
+
+<p>Choosing Gentoo as the base provides:</p>
+
+<ul>
+<li><strong>USE flags</strong> for per-package feature control, rigorously eliminating unnecessary dependencies</li>
+<li><strong>Source builds</strong> that produce binaries optimized for the target</li>
+<li><strong>Profile hierarchy</strong> for systematically managing differences across deployment targets</li>
+<li><strong>Portage's overlay mechanism</strong> for naturally integrating custom packages</li>
+</ul>
+
+<h3>7. Multi-Architecture, Multi-Target</h3>
+
+<p>The toolchain provides cross-cutting support for x86_64 / aarch64 / i686 / riscv64 architectures and BIOS / UEFI / Raspberry Pi boot methods.</p>
+
+<hr>
+
+<h2>End-to-End Workflow</h2>
+
+<div class="flow-diagram">
+<ol>
+<li><span class="step-title">Design:</span> Write genpack.json5</li>
+<li><span class="step-title">Build:</span> genpack build
+<ul>
+<li>Lower layer: Compile with stage3 + Portage (systemd-nspawn)</li>
+<li>Upper layer: Extract runtime files only + customize</li>
+<li>Pack: SquashFS compression → system-x86_64.squashfs</li>
+</ul></li>
+<li><span class="step-title">Deploy</span> (choose one)
+<ul>
+<li>genpack-install --disk=/dev/sdX (physical disk)</li>
+<li>genpack-install --cdrom=out.iso (ISO image)</li>
+<li>vm run system-x86_64.squashfs (virtual machine)</li>
+</ul></li>
+<li><span class="step-title">Boot:</span> genpack-init reads system.ini and configures the system</li>
+<li><span class="step-title">Operate:</span> Edit system.ini and reboot = configuration change<br>Self-update with a new image = OS update</li>
+</ol>
+</div>
+
+<hr>
+
+<h2>What Makes genpack Unique</h2>
+
+<p>Many tools with similar goals exist — NixOS, Yocto, Buildroot, mkosi, OSTree, among others — but genpack occupies a unique position aimed at <strong>"distributing highly optimized Linux images as appliances that non-technical users can operate."</strong></p>
+
+<p>At its core is a combination of ideas: an intentionally primitive configuration interface (INI files on FAT32), configuration applied at every boot with automatic persistence mode selection based on hardware detection, repurposing Gentoo — the quintessential mutable distribution — as raw material for immutable images, and a plugin-based init system via pybind11.</p>
+
+<p>For a detailed comparison with existing tools, see <a href="uvp.en.html">A Conversation about genpack's Unique Value Proposition</a>.</p>
+
+<section class="source-references">
+<h2>Source References</h2>
+<p>This document was written based on the following repository snapshots:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-init/tree/721060c832335b240e6bd6998779235e5185468a">wbrxcorp/genpack-init @ 721060c</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-install/tree/4246185bb8c5b32f809fa482a28aa5c39caf5b3e">wbrxcorp/genpack-install @ 4246185</a></li>
+<li><a href="https://github.com/shimarin/vm/tree/2297086ffe725a554e4577ad43d2a74e5e34d97a">shimarin/vm @ 2297086</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="json5.en.html">genpack.json5 Specification Reference</a></li>
+<li><a href="subdirectories.en.html">Artifact Directory Structure</a></li>
+<li><a href="profiles.en.html">genpack-overlay Profile Reference</a></li>
+<li><a href="cli.en.html">genpack CLI Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+<li><a href="artifact-stub.en.html">stub — A Multi-Distribution Installer and kexec Bootloader for VMs</a></li>
+<li><a href="uvp.en.html">A Dialogue on the Unique Value Proposition of genpack</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

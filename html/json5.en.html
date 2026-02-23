@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack.json5 Specification Reference</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack.json5 Specification Reference" />
+<meta property="og:description" content="Complete specification reference for genpack.json5, the declarative definition file for system images built with genpack" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/json5.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack.json5 Specification Reference" />
+<meta name="twitter:description" content="Complete specification reference for genpack.json5, the declarative definition file for system images built with genpack" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<h1>genpack.json5 Specification Reference</h1>
+
+<h2>Overview</h2>
+
+<p><code>genpack.json5</code> is a declarative definition file for system images built with genpack. It is placed in the root directory of each artifact and consolidates package configuration, Portage settings, user/service definitions, compression methods, and more into a single file.</p>
+
+<p>The format is <a href="https://json5.org/">JSON5</a>, which supports comments, trailing commas, and other conveniences. If <code>genpack.json5</code> does not exist, it falls back to <code>genpack.json</code>, but if both exist, an error is raised.</p>
+
+<h2>Minimal Configuration</h2>
+
+<pre><code class="language-json5">{
+  packages: ["genpack/paravirt"]
+}</code></pre>
+
+<p>If <code>name</code> is omitted, the directory name is used automatically (with a warning).</p>
+
+<h2>Field Reference</h2>
+
+<h3>Basic Fields</h3>
+
+<h4>name</h4>
+
+<ul>
+<li><strong>Type</strong>: string</li>
+<li><strong>Default</strong>: Base name of the current directory</li>
+<li><strong>Description</strong>: The name of the artifact. It is passed to scripts as the <code>ARTIFACT</code> environment variable during build and is also used as the default output file name.</li>
+</ul>
+
+<h4>profile</h4>
+
+<ul>
+<li><strong>Type</strong>: string | null</li>
+<li><strong>Default</strong>: null</li>
+<li><strong>Description</strong>: Profile name from genpack-overlay. Internally concatenated with <code>genpack-overlay:genpack/{arch}/</code> and set as the Portage profile.</li>
+</ul>
+
+<p>Common profiles:</p>
+
+<table>
+<thead>
+<tr><th>Profile</th><th>Use Case</th></tr>
+</thead>
+<tbody>
+<tr><td><code>paravirt</code></td><td>For QEMU/KVM virtual machines (virtio, guest agent)</td></tr>
+<tr><td><code>baremetal</code></td><td>For physical machines (BIOS/UEFI, device drivers)</td></tr>
+<tr><td><code>gnome/baremetal</code></td><td>Physical machine + GNOME desktop</td></tr>
+<tr><td><code>weston/paravirt</code></td><td>Virtual machine + Wayland (Weston)</td></tr>
+</tbody>
+</table>
+
+<h4>outfile</h4>
+
+<ul>
+<li><strong>Type</strong>: string</li>
+<li><strong>Default</strong>: <code>{name}-{arch}.squashfs</code></li>
+<li><strong>Description</strong>: Output file name. Can also be overridden with the <code>--outfile</code> CLI argument.</li>
+</ul>
+
+<h4>compression</h4>
+
+<ul>
+<li><strong>Type</strong>: string</li>
+<li><strong>Default</strong>: <code>"gzip"</code></li>
+<li><strong>Allowed values</strong>: <code>"gzip"</code>, <code>"xz"</code>, <code>"lzo"</code>, <code>"none"</code></li>
+<li><strong>Description</strong>: SquashFS compression algorithm. <code>"xz"</code> produces the smallest size but takes longer to compress. Can also be overridden with the <code>--compression</code> CLI argument.</li>
+</ul>
+
+<h3>Package-Related</h3>
+
+<h4>packages</h4>
+
+<ul>
+<li><strong>Type</strong>: string[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: List of packages to install. Specified in Gentoo package atom format (<code>category/name</code>).</li>
+</ul>
+
+<p>Adding a <code>-</code> prefix excludes the package from the list when merging with profiles or variants:</p>
+
+<pre><code class="language-json5">{
+  packages: [
+    "genpack/paravirt",
+    "app-misc/screen",
+    "-app-misc/unwanted-package"  // Exclude from merge source
+  ]
+}</code></pre>
+
+<h4>buildtime_packages</h4>
+
+<ul>
+<li><strong>Type</strong>: string[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: Packages needed only at build time. They are installed in the lower layer but are not copied to the upper layer (final image). Use this for packages required for compilation but not at runtime, such as Go or CMake.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  buildtime_packages: ["dev-lang/go", "dev-build/cmake"]
+}</code></pre>
+
+<h4>binpkg_excludes</h4>
+
+<ul>
+<li><strong>Type</strong>: string | string[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: Packages to exclude from the binary package cache (usepkg/buildpkg). Use this for packages where sharing binary caches is inappropriate due to differing configurations, such as the kernel.</li>
+</ul>
+
+<h3>Portage Settings</h3>
+
+<h4>use</h4>
+
+<ul>
+<li><strong>Type</strong>: object</li>
+<li><strong>Default</strong>: <code>{}</code></li>
+<li><strong>Description</strong>: Per-package USE flag settings. Equivalent to <code>package.use</code>.</li>
+</ul>
+
+<p>Keys are package atoms (<code>*/*</code> for global settings), and values are strings (space-separated) or lists:</p>
+
+<pre><code class="language-json5">{
+  use: {
+    "dev-lang/php": "+mysql +curl +gd +xml +zip",
+    "media-libs/mesa": "wayland VIDEO_CARDS: virgl",
+    "*/*": "python_targets_python3_12"
+  }
+}</code></pre>
+
+<p>USE_EXPAND variables such as <code>CPU_FLAGS_X86:</code>, <code>VIDEO_CARDS:</code>, <code>AMDGPU_TARGETS:</code>, and <code>APACHE2_MODULES:</code> are also configured through this field.</p>
+
+<h4>accept_keywords</h4>
+
+<ul>
+<li><strong>Type</strong>: object</li>
+<li><strong>Default</strong>: <code>{}</code></li>
+<li><strong>Description</strong>: Per-package ACCEPT_KEYWORDS settings. Equivalent to <code>package.accept_keywords</code>.</li>
+</ul>
+
+<p>When the value is <code>null</code>, it means no keyword restriction (the standard pattern for accepting testing versions):</p>
+
+<pre><code class="language-json5">{
+  accept_keywords: {
+    "dev-util/debootstrap": null,      // Accept ~arch
+    "app-misc/package": "~amd64",      // Specific keyword
+    "app-misc/other": ["~amd64", "**"] // Multiple keywords
+  }
+}</code></pre>
+
+<h4>mask</h4>
+
+<ul>
+<li><strong>Type</strong>: string[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: Package masks. Equivalent to <code>package.mask</code>. Used for purposes such as blocking versions above a certain threshold.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  mask: [">=dev-db/mysql-8"]
+}</code></pre>
+
+<h4>license</h4>
+
+<ul>
+<li><strong>Type</strong>: object</li>
+<li><strong>Default</strong>: <code>{}</code></li>
+<li><strong>Description</strong>: Per-package license acceptance settings. Equivalent to <code>package.license</code>.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  license: {
+    "sys-kernel/linux-firmware": "linux-fw-redistributable",
+    "www-client/google-chrome": "google-chrome"
+  }
+}</code></pre>
+
+<h4>env</h4>
+
+<ul>
+<li><strong>Type</strong>: object</li>
+<li><strong>Default</strong>: <code>{}</code></li>
+<li><strong>Description</strong>: Per-package environment settings. Equivalent to <code>package.env</code>. Specify the name of a configuration file in Portage's <code>env/</code> directory.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  env: {
+    "sci-libs/pytorch": "torch_cuda.conf"
+  }
+}</code></pre>
+
+<h3>Users and Groups</h3>
+
+<h4>users</h4>
+
+<ul>
+<li><strong>Type</strong>: (string | object)[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: Users to create in the upper layer. Specified as either a string (username only) or an object.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  users: [
+    "simpleuser",
+    {
+      name: "advanceduser",
+      uid: 1000,
+      home: "/home/advanceduser",
+      shell: "/bin/bash",
+      initial_group: "users",
+      additional_groups: ["wheel", "video", "audio"],
+      create_home: true,
+      empty_password: true
+    }
+  ]
+}</code></pre>
+
+<p>Object format properties:</p>
+
+<table>
+<thead>
+<tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>(required)</td><td>Username</td></tr>
+<tr><td><code>uid</code></td><td>integer</td><td>(auto)</td><td>User ID</td></tr>
+<tr><td><code>comment</code></td><td>string</td><td></td><td>GECOS field</td></tr>
+<tr><td><code>home</code></td><td>string</td><td></td><td>Home directory</td></tr>
+<tr><td><code>shell</code></td><td>string</td><td></td><td>Login shell</td></tr>
+<tr><td><code>initial_group</code></td><td>string</td><td></td><td>Primary group</td></tr>
+<tr><td><code>additional_groups</code></td><td>string | string[]</td><td></td><td>Additional groups</td></tr>
+<tr><td><code>create_home</code></td><td>boolean</td><td>true</td><td>Whether to create the home directory</td></tr>
+<tr><td><code>empty_password</code></td><td>boolean</td><td>false</td><td>Whether to allow an empty password</td></tr>
+</tbody>
+</table>
+
+<h4>groups</h4>
+
+<ul>
+<li><strong>Type</strong>: (string | object)[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: Groups to create in the upper layer.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  groups: [
+    "customgroup",
+    { name: "groupwithgid", gid: 1002 }
+  ]
+}</code></pre>
+
+<h3>Services and Setup</h3>
+
+<h4>services</h4>
+
+<ul>
+<li><strong>Type</strong>: string[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: systemd services to enable. Template units and timer units can also be specified.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  services: [
+    "sshd",
+    "apache2",
+    "fstrim.timer",
+    "vsock-proxy@80.socket"
+  ]
+}</code></pre>
+
+<h4>setup_commands</h4>
+
+<ul>
+<li><strong>Type</strong>: string[]</li>
+<li><strong>Default</strong>: <code>[]</code></li>
+<li><strong>Description</strong>: Shell commands executed inside an nspawn container after the upper layer is built. Use this for customizations that cannot be accomplished by package installation or file copying alone, such as editing files or changing permissions.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  setup_commands: [
+    "sed -i 's/-D SSL //' /etc/conf.d/apache2",
+    "mkdir -p /var/www/localhost/htdocs"
+  ]
+}</code></pre>
+
+<h3>Build Settings</h3>
+
+<h4>lower-layer-capacity</h4>
+
+<ul>
+<li><strong>Type</strong>: integer (in GiB)</li>
+<li><strong>Default</strong>: 128</li>
+<li><strong>Description</strong>: Disk image size for the lower layer (in GiB). Increase this when the number of packages is very large.</li>
+</ul>
+
+<h4>independent_binpkgs</h4>
+
+<ul>
+<li><strong>Type</strong>: boolean</li>
+<li><strong>Default</strong>: false</li>
+<li><strong>Description</strong>: Whether to use artifact-specific binary packages instead of the shared binary package cache. Can also be specified with the <code>--independent-binpkgs</code> CLI option.</li>
+</ul>
+
+<h4>circulardep_breaker</h4>
+
+<ul>
+<li><strong>Type</strong>: object</li>
+<li><strong>Default</strong>: (none)</li>
+<li><strong>Description</strong>: Special configuration for resolving circular dependencies in Gentoo. Some packages (such as freetype and harfbuzz) depend on each other, so they are first installed with restricted USE flags and then built normally.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  circulardep_breaker: {
+    packages: ["media-libs/freetype", "media-libs/harfbuzz"],
+    use: "-truetype -harfbuzz"
+  }
+}</code></pre>
+
+<p>The packages specified in <code>packages</code> are first installed with the USE flags specified in <code>use</code>, and then rebuilt with the correct flags during the subsequent normal build.</p>
+
+<h3>Conditional Settings</h3>
+
+<h4>arch</h4>
+
+<ul>
+<li><strong>Type</strong>: object</li>
+<li><strong>Default</strong>: <code>{}</code></li>
+<li><strong>Description</strong>: Architecture-specific setting overrides. Keys are architecture names (multiple can be specified with <code>|</code>), and values are objects containing fields to be merged.</li>
+</ul>
+
+<p>Only the settings for keys matching the current machine's architecture (<code>uname -m</code>) are merged.</p>
+
+<pre><code class="language-json5">{
+  arch: {
+    x86_64: {
+      packages: ["app-misc/x86-specific"],
+      use: {
+        "media-video/ffmpeg": "CPU_FLAGS_X86: avx avx2 sse4_2"
+      }
+    },
+    aarch64: {
+      accept_keywords: {
+        "app-emulation/qemu-guest-agent": null
+      }
+    }
+  }
+}</code></pre>
+
+<p>Mergeable fields: <code>packages</code>, <code>buildtime_packages</code>, <code>accept_keywords</code>, <code>use</code>, <code>mask</code>, <code>license</code>, <code>env</code>, <code>binpkg_excludes</code>, <code>setup_commands</code>, <code>services</code></p>
+
+<h4>variants</h4>
+
+<ul>
+<li><strong>Type</strong>: object</li>
+<li><strong>Default</strong>: <code>{}</code></li>
+<li><strong>Description</strong>: Named variant configurations. Used to generate images with different configurations from the same artifact. Selected with the <code>--variant</code> CLI argument.</li>
+</ul>
+
+<pre><code class="language-json5">{
+  packages: ["genpack/gnome"],
+  services: ["gdm"],
+  variants: {
+    paravirt: {
+      // packages are merged with the parent definition
+      packages: ["-x11-drivers/nvidia-drivers"],
+      use: {
+        "media-libs/mesa": "VIDEO_CARDS: virgl"
+      }
+    },
+    cuda: {
+      packages: ["x11-drivers/nvidia-drivers"],
+      use: {
+        "sci-libs/pytorch": "CUDA_TARGETS: sm_89"
+      }
+    }
+  }
+}</code></pre>
+
+<p>Within a variant, most top-level fields including <code>name</code>, <code>profile</code>, and <code>outfile</code> can be overridden or merged. Additionally, <code>arch</code> can be included within a variant.</p>
+
+<h4>default_variant</h4>
+
+<ul>
+<li><strong>Type</strong>: string | null</li>
+<li><strong>Default</strong>: null</li>
+<li><strong>Description</strong>: The default variant name used when <code>--variant</code> is not specified on the CLI. An error is raised if the specified variant does not exist in <code>variants</code>.</li>
+</ul>
+
+<h2>Merge Behavior</h2>
+
+<p>Settings in genpack.json5 are merged in the following order:</p>
+
+<ol>
+<li><strong>Base settings</strong>: Top-level fields</li>
+<li><strong>Architecture-specific</strong>: Settings for the matching architecture within <code>arch</code> are merged</li>
+<li><strong>Variant</strong>: Settings for the selected variant within <code>variants</code> are merged (including <code>arch</code> within the variant)</li>
+</ol>
+
+<p>Behavior of list-type fields during merging:</p>
+
+<ul>
+<li><code>packages</code>: Elements with a <code>-</code> prefix are removed from the existing list. Others are added without duplicates</li>
+<li><code>buildtime_packages</code>, <code>mask</code>, <code>services</code>: Added without duplicates</li>
+<li><code>accept_keywords</code>, <code>use</code>, <code>license</code>, <code>env</code>: Overwritten on a per-key basis</li>
+</ul>
+
+<h2>Deprecated Field Names</h2>
+
+<p>The following hyphenated names are deprecated, and using them will result in an error:</p>
+
+<table>
+<thead>
+<tr><th>Deprecated Name</th><th>Current Name</th></tr>
+</thead>
+<tbody>
+<tr><td><code>buildtime-packages</code></td><td><code>buildtime_packages</code></td></tr>
+<tr><td><code>binpkg-exclude</code></td><td><code>binpkg_excludes</code></td></tr>
+<tr><td><code>circulardep-breaker</code></td><td><code>circulardep_breaker</code></td></tr>
+</tbody>
+</table>
+
+<p>Within user objects, hyphenated names are still accepted for compatibility:</p>
+
+<ul>
+<li><code>create-home</code> &rarr; <code>create_home</code></li>
+<li><code>initial-group</code> &rarr; <code>initial_group</code></li>
+<li><code>additional-groups</code> &rarr; <code>additional_groups</code></li>
+<li><code>empty-password</code> &rarr; <code>empty_password</code></li>
+</ul>
+
+<h2>Complete Configuration Example</h2>
+
+<pre><code class="language-json5">{
+  // Basic information
+  name: "nextcloud",
+  profile: "paravirt",
+  compression: "xz",
+
+  // Packages
+  packages: [
+    "genpack/paravirt",
+    "www-apps/nextcloud",
+    "dev-db/mysql",
+    "dev-lang/php",
+    "net-misc/redis",
+    "www-servers/apache"
+  ],
+  buildtime_packages: [
+    "app-arch/rpm2targz"
+  ],
+  binpkg_excludes: ["sys-kernel/gentoo-kernel"],
+
+  // Portage settings
+  use: {
+    "dev-lang/php": "mysql curl gd xml zip",
+    "www-servers/apache": "APACHE2_MODULES: http2 proxy proxy_fcgi"
+  },
+  accept_keywords: {
+    "net-vpn/frp": null
+  },
+  license: {
+    "net-analyzer/fping": "fping",
+    "dev-db/redis": "SSPL-1"
+  },
+
+  // Users and services
+  users: [
+    { name: "nextcloud", uid: 1000 }
+  ],
+  services: ["apache2", "mysqld", "redis"],
+
+  // Setup
+  setup_commands: [
+    "sed -i 's/-D SSL //' /etc/conf.d/apache2"
+  ],
+
+  // Variants
+  variants: {
+    selftestable: {
+      profile: "weston/paravirt",
+      packages: ["www-client/google-chrome"],
+      users: [
+        { name: "user", uid: 1000, empty_password: true }
+      ]
+    }
+  }
+}</code></pre>
+
+<section class="source-references">
+<h2>Source References</h2>
+<p>This document was written based on the following repository snapshots:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.en.html">genpack &mdash; A Gentoo-Based Immutable System Image Build Toolchain</a></li>
+<li><a href="subdirectories.en.html">Artifact Directory Structure</a></li>
+<li><a href="profiles.en.html">genpack-overlay Profile Reference</a></li>
+<li><a href="cli.en.html">genpack CLI Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+<li><a href="artifact-stub.en.html">stub &mdash; Multi-Distribution Installer and kexec Boot Loader for VMs</a></li>
+<li><a href="uvp.en.html">A Conversation with Gemini about genpack's Unique Value Proposition</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

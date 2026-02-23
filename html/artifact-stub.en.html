@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>stub — Multi-Distribution Installer and kexec Boot Loader for VMs</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="stub — Multi-Distribution Installer and kexec Boot Loader for VMs" />
+<meta property="og:description" content="A disposable boot environment for installing other Linux distributions on QEMU/KVM virtual machines, built with the genpack toolchain." />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/artifact-stub.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="stub — Multi-Distribution Installer and kexec Boot Loader for VMs" />
+<meta name="twitter:description" content="A disposable boot environment for installing other Linux distributions on QEMU/KVM virtual machines, built with the genpack toolchain." />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<h1>stub — Multi-Distribution Installer and kexec Boot Loader for VMs</h1>
+
+<p><a href="https://github.com/genpack-artifacts/stub">GitHub: genpack-artifacts/stub</a></p>
+
+<h2>Overview</h2>
+
+<p>stub is one of the artifacts built with the genpack toolchain. It serves as a <strong>disposable boot environment for installing other Linux distributions on QEMU/KVM virtual machines</strong>.</p>
+
+<p>While it operates as a genpack image, its ultimate purpose is to bring up an OS other than genpack. It is a two-stage provisioning tool that acts as an installer on first boot and as a boot loader using kexec on subsequent boots.</p>
+
+<h2>Usage</h2>
+
+<p>Used in combination with the <a href="https://github.com/shimarin/vm">vm</a> command.</p>
+
+<pre><code># 1. Create a virtual disk for data (8GiB)
+vm allocate debian12.img 8
+
+# 2. Start a VM with stub as the system image and debian12.img as the data disk
+vm run -d debian12.img stub-$(uname -m).squashfs
+
+# 3. After auto-login inside the VM, run the script for the desired distribution
+./debian12.sh
+
+# 4. After installation completes, reboot — from then on, Debian 12 boots directly</code></pre>
+
+<h2>How It Works</h2>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">stub boots</span> <span class="desc">(genpack image, console auto-login)</span>
+<ul>
+<li><span class="desc">Distribution install scripts are available under /root/</span></li>
+<li><span class="label">User runs a script</span>
+<ol>
+<li>Create filesystem on /dev/vdb (data virtual disk)</li>
+<li>Bootstrap distribution with debootstrap / rpmbootstrap</li>
+<li>Configure SSH, network, hostname, locale, etc.</li>
+<li>Generate initramfs with dracut</li>
+<li>reboot</li>
+</ol></li>
+<li><span class="label">Next boot:</span> <span class="desc">genpack-init's kexec plugin (00kexec.py)</span><br>
+<span class="desc">Detects kernel on data disk → kexec loads the installed OS kernel directly → stub's job is done, installed OS boots from now on</span></li>
+</ul></li>
+</ul>
+</div>
+
+<h2>Supported Distributions</h2>
+
+<h3>Debian / Ubuntu (using debootstrap)</h3>
+
+<table>
+<thead>
+<tr><th>Script</th><th>Distribution</th></tr>
+</thead>
+<tbody>
+<tr><td><code>debian12.sh</code></td><td>Debian 12 (Bookworm)</td></tr>
+<tr><td><code>debian13.sh</code></td><td>Debian 13 (Trixie)</td></tr>
+<tr><td><code>ubuntu2004.sh</code></td><td>Ubuntu 20.04 (Focal)</td></tr>
+<tr><td><code>ubuntu2204.sh</code></td><td>Ubuntu 22.04 (Jammy)</td></tr>
+<tr><td><code>ubuntu2404.sh</code></td><td>Ubuntu 24.04 (Noble)</td></tr>
+<tr><td><code>ubuntu2604.sh</code></td><td>Ubuntu 26.04 (Resolute)</td></tr>
+</tbody>
+</table>
+
+<h3>RHEL / RPM-based (using rpmbootstrap)</h3>
+
+<table>
+<thead>
+<tr><th>Script</th><th>Distribution</th></tr>
+</thead>
+<tbody>
+<tr><td><code>centos6.sh</code></td><td>CentOS 6</td></tr>
+<tr><td><code>centos7.sh</code></td><td>CentOS 7</td></tr>
+<tr><td><code>centos8stream.sh</code></td><td>CentOS Stream 8</td></tr>
+<tr><td><code>centos9stream.sh</code></td><td>CentOS Stream 9</td></tr>
+<tr><td><code>centos10stream.sh</code></td><td>CentOS Stream 10</td></tr>
+<tr><td><code>almalinux9.sh</code></td><td>AlmaLinux 9</td></tr>
+<tr><td><code>rocky8.sh</code></td><td>Rocky Linux 8</td></tr>
+<tr><td><code>miraclelinux8.sh</code></td><td>MIRACLE LINUX 8</td></tr>
+<tr><td><code>fedora42.sh</code></td><td>Fedora 42</td></tr>
+</tbody>
+</table>
+
+<h3>Other</h3>
+
+<table>
+<thead>
+<tr><th>Script</th><th>Distribution</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gentoo.sh</code></td><td>Gentoo Linux (built from a stage3 tarball)</td></tr>
+</tbody>
+</table>
+
+<h2>Key Components</h2>
+
+<h3>kexec Boot Plugin (<code>files/usr/lib/genpack-init/00kexec.py</code>)</h3>
+
+<p>A Python script that runs as a genpack-init plugin on every boot. It checks whether an installed OS kernel and initramfs exist on the data disk (<code>/dev/vdb</code>) or on virtiofs. If found, it loads and transitions to that kernel using kexec.</p>
+
+<p>This allows stub to function as a transparent boot loader after the initial installation, making the VM boot flow look like:</p>
+
+<div class="boot-flow">
+<span class="stage">QEMU start</span><span class="arrow">→</span>
+<span class="stage">stub kernel</span><span class="arrow">→</span>
+<span class="stage">genpack-init</span><span class="arrow">→</span>
+<span class="stage">kexec</span><span class="arrow">→</span>
+<span class="stage">installed OS kernel</span><span class="arrow">→</span>
+<span class="stage">OS boot</span>
+</div>
+
+<h3>Distribution Install Scripts (<code>files/root/*.sh</code>)</h3>
+
+<p>Each script follows a common pattern:</p>
+
+<ol>
+<li>Wait for network connectivity with <code>systemd-networkd-wait-online</code></li>
+<li>Create a filesystem on the data disk (XFS / Btrfs)</li>
+<li>Bootstrap the base system with <code>debootstrap</code> or <code>rpmbootstrap</code></li>
+<li>Configure hostname, networking, SSH, and timezone</li>
+<li>Deploy SSH public keys, LLMNRD (Link-Local Name Resolution), and the QEMU guest agent</li>
+<li>Generate initramfs with dracut (including virtiofs / encryption support)</li>
+<li>Reboot</li>
+</ol>
+
+<p>The system is ready for remote management via SSH immediately after installation.</p>
+
+<h3>Auto-Login (<code>files/build.d/autologin.sh</code>)</h3>
+
+<p>Sets up root auto-login on both hvc0 (virtio console) and ttyS0 (serial console). When connecting via <code>vm console</code>, a shell is available immediately without a login prompt.</p>
+
+<h3>LLMNRD (<code>files/build.d/build-llmnrd.sh</code>)</h3>
+
+<p>Statically builds the Link-Local Multicast Name Resolution Daemon from source. It is deployed to the installed OS, enabling hostname resolution without a DNS server.</p>
+
+<h2>Included Packages</h2>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>genpack/paravirt</code></td><td>Paravirtualized kernel and base system</td></tr>
+<tr><td><code>sys-kernel/gentoo-kernel</code></td><td>Minimal kernel built from source</td></tr>
+<tr><td><code>sys-apps/kexec-tools</code></td><td>Used to transition to the OS kernel</td></tr>
+<tr><td><code>dev-util/debootstrap</code></td><td>Bootstrapping Debian / Ubuntu systems</td></tr>
+<tr><td><code>dev-util/rpmbootstrap</code></td><td>Bootstrapping RPM-based systems</td></tr>
+<tr><td><code>sys-fs/cryptsetup</code></td><td>Disk encryption support</td></tr>
+<tr><td><code>sys-devel/binutils</code></td><td>Binary utilities</td></tr>
+</tbody>
+</table>
+
+<h2>Kernel Minimization</h2>
+
+<p>Since stub is a disposable boot environment that does not require broad hardware support, 1,757 kernel options are disabled in <code>kernel/config.d/unset.config</code>.</p>
+
+<p>Major features disabled include:</p>
+
+<ul>
+<li>Hibernation / Suspend / Power management</li>
+<li>Most of XEN / NUMA / SGX / EFI</li>
+<li>All debugging, profiling, and tracing features</li>
+<li>Unnecessary kernel compression algorithms</li>
+<li>Kernel signature verification (<code>KEXEC_SIG</code> — disabled to allow flexible kexec usage)</li>
+</ul>
+
+<h2>Supported Architectures</h2>
+
+<table>
+<thead>
+<tr><th>Architecture</th><th>Kernel Configuration</th><th>Output File</th></tr>
+</thead>
+<tbody>
+<tr><td>x86_64</td><td>unset.config only</td><td><code>stub-x86_64.squashfs</code></td></tr>
+<tr><td>aarch64</td><td>savedconfig + unset.config</td><td><code>stub-aarch64.squashfs</code></td></tr>
+<tr><td>riscv64</td><td>savedconfig + unset.config</td><td><code>stub-riscv64.squashfs</code></td></tr>
+</tbody>
+</table>
+
+<h2>Design Rationale</h2>
+
+<p>stub is a unique entity within the genpack ecosystem. Although it is built and booted as a genpack image, its purpose is to bring up an OS other than genpack. By leveraging genpack-init's plugin mechanism (pybind11 + Python) and the vm command's virtual disk management, it provides a unified environment for provisioning many different distribution VMs using a common procedure in QEMU/KVM environments.</p>
+
+<section class="source-references">
+<h2>Source References</h2>
+<p>This document was written based on the following repository snapshots:</p>
+<ul>
+<li><a href="https://github.com/genpack-artifacts/stub/tree/b2aa5c3e07173fcea3247b5c3aeddb5afe2d273f">genpack-artifacts/stub @ b2aa5c3</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.en.html">genpack — Gentoo-Based Immutable System Image Build Toolchain</a></li>
+<li><a href="json5.en.html">genpack.json5 Specification Reference</a></li>
+<li><a href="subdirectories.en.html">Artifact Directory Structure</a></li>
+<li><a href="profiles.en.html">genpack-overlay Profile Reference</a></li>
+<li><a href="cli.en.html">genpack CLI Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+<li><a href="uvp.en.html">Discussion on genpack's Unique Value Proposition</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

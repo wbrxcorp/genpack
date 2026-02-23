@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack-install CLI リファレンス</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack-install CLI リファレンス" />
+<meta property="og:description" content="genpack-install コマンドのオプションと動作モードの一覧" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/cli-install.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack-install CLI リファレンス" />
+<meta name="twitter:description" content="genpack-install コマンドのオプションと動作モードの一覧" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="cli-install.en.html">English version</a></p>
+
+<h1>genpack-install CLI リファレンス</h1>
+
+<h2>概要</h2>
+
+<p><code>genpack-install</code> は genpack で生成した SquashFS システムイメージを物理ディスク、ISO イメージ、ZIP アーカイブにデプロイするためのツールです。</p>
+
+<ul>
+<li>GitHub: <a href="https://github.com/wbrxcorp/genpack-install">wbrxcorp/genpack-install</a></li>
+</ul>
+
+<pre><code>genpack-install [オプション] [system_image]</code></pre>
+
+<p><strong>root 権限が必要です。</strong></p>
+
+<h2>オプション</h2>
+
+<h3>位置引数</h3>
+
+<table>
+<thead>
+<tr><th>引数</th><th>必須</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>system_image</code></td><td>動作モードによる</td><td>システムイメージファイル（SquashFS）</td></tr>
+</tbody>
+</table>
+
+<p>セルフアップデートモードでは必須です。<code>--disk</code>、<code>--cdrom</code>、<code>--zip</code> モードでは省略可能で、省略時は現在インストールされているシステムイメージが使用されます。</p>
+
+<h3>名前付きオプション</h3>
+
+<table>
+<thead>
+<tr><th>オプション</th><th>型</th><th>デフォルト</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--disk &lt;PATH&gt;</code></td><td>文字列</td><td>(なし)</td><td>ディスクデバイスパス。<code>list</code> を指定するとインストール可能なディスクの一覧を表示</td></tr>
+<tr><td><code>--cdrom &lt;PATH&gt;</code></td><td>文字列</td><td>(なし)</td><td>作成する ISO9660 イメージのパス</td></tr>
+<tr><td><code>--zip &lt;PATH&gt;</code></td><td>文字列</td><td>(なし)</td><td>作成する ZIP アーカイブのパス</td></tr>
+<tr><td><code>--system-cfg &lt;PATH&gt;</code></td><td>パス</td><td>(なし)</td><td>指定した system.cfg ファイルをインストール</td></tr>
+<tr><td><code>--system-ini &lt;PATH&gt;</code></td><td>パス</td><td>(なし)</td><td>指定した system.ini ファイルをインストール</td></tr>
+<tr><td><code>--label &lt;NAME&gt;</code></td><td>文字列</td><td>(なし)</td><td>ブートパーティションまたは ISO イメージのボリュームラベル</td></tr>
+<tr><td><code>--gpt</code></td><td>フラグ</td><td>false</td><td>MBR の代わりに常に GPT を使用</td></tr>
+<tr><td><code>--superfloppy</code></td><td>フラグ</td><td>false</td><td>パーティショニングせずディスク全体を使用</td></tr>
+<tr><td><code>--no-esp</code></td><td>フラグ</td><td>false</td><td>ブートパーティションを ESP としてマークしない</td></tr>
+<tr><td><code>--additional-boot-files &lt;PATH&gt;</code></td><td>パス</td><td>(なし)</td><td>追加のブートファイルを含む ZIP アーカイブ</td></tr>
+<tr><td><code>-y</code></td><td>フラグ</td><td>false</td><td>確認プロンプトをスキップ</td></tr>
+<tr><td><code>--debug</code></td><td>フラグ</td><td>false</td><td>デバッグメッセージを表示</td></tr>
+</tbody>
+</table>
+
+<h2>動作モード</h2>
+
+<p>genpack-install は引数の組み合わせにより 4 つの動作モードを持ちます。</p>
+
+<h3>セルフアップデート（引数のみ、オプションなし）</h3>
+
+<pre><code>genpack-install &lt;system_image&gt;</code></pre>
+
+<p>稼働中のシステムのシステムイメージをアトミックに更新します。<code>--disk</code>、<code>--cdrom</code>、<code>--zip</code> のいずれも指定しない場合にこのモードで動作します。</p>
+
+<p><strong>更新手順:</strong></p>
+
+<ol>
+<li>現在のシステムイメージのパスを特定（ブートパーティションの <code>system.img</code> またはデータパーティションの <code>system</code>）</li>
+<li>新しいシステムイメージを検証</li>
+<li>ブートファイル（カーネル、initramfs、ブートローダー）を更新</li>
+<li>アトミックなリネーム操作で切り替え:
+<ul>
+<li>既存の <code>system.old</code> を削除（存在する場合）</li>
+<li>新しいイメージを <code>system.new</code> としてコピー</li>
+<li>現在のイメージを <code>system.cur</code> にリネーム（ロールバック用に保持）</li>
+<li><code>system.new</code> を本来のイメージパスにリネーム</li>
+<li><code>sync</code> を実行</li>
+</ul>
+</li>
+</ol>
+
+<p>失敗時は <code>system.cur</code> から自動復旧を試みます。</p>
+
+<h3>ディスクインストール（--disk）</h3>
+
+<pre><code>genpack-install --disk=&lt;デバイスパス&gt; [オプション] [system_image]
+genpack-install --disk=list</code></pre>
+
+<p>物理ディスクにシステムイメージをインストールします。</p>
+
+<p><code>--disk=list</code> を指定すると、インストール可能なディスクの一覧を表示します。読み取り専用デバイス、マウント済みデバイス、4GiB 未満のデバイスは除外されます。</p>
+
+<p><strong>パーティショニング:</strong></p>
+
+<ul>
+<li><strong>MBR/GPT の自動選択</strong>: ディスクが 2TiB 以下かつ論理セクタサイズが 512 バイトの場合は MBR、それ以外は GPT が選択されます</li>
+<li><code>--gpt</code>: 条件に関わらず GPT を強制使用</li>
+<li><code>--superfloppy</code>: パーティションテーブルを作成せず、ディスク全体を FAT32 としてフォーマット（4GiB 未満のイメージのみ）</li>
+</ul>
+
+<p><strong>通常モード（パーティショニングあり）のレイアウト:</strong></p>
+
+<ol>
+<li><strong>ブートパーティション</strong>（FAT32）: カーネル、initramfs、ブートローダー、4GiB 未満のシステムイメージを格納</li>
+<li><strong>データパーティション</strong>（Btrfs）: 4GiB 以上のシステムイメージを格納。ラベルは <code>data-{ブートパーティションUUID}</code></li>
+</ol>
+
+<p><code>--no-esp</code> を指定すると、ブートパーティションに ESP（EFI System Partition）フラグを付与しません。一部のブートローダーが ESP フラグを嫌う場合に使用します（MBR 時のみ有効）。</p>
+
+<p>インストール前に確認プロンプトが表示されます。<code>-y</code> で確認をスキップできます。</p>
+
+<h3>ISO イメージ作成（--cdrom）</h3>
+
+<pre><code>genpack-install --cdrom=&lt;出力パス&gt; [--label=&lt;ラベル&gt;] [system_image]</code></pre>
+
+<p>ブータブル ISO9660 イメージを作成します。xorriso（libisoburn）がインストールされている必要があります。</p>
+
+<ul>
+<li><strong>BIOS ブート</strong>: El Torito（<code>eltorito-bios.img</code> が存在する場合）</li>
+<li><strong>EFI ブート</strong>: EFI パーティション付加（<code>eltorito-efi.img</code> が存在する場合）</li>
+<li>両方のイメージが存在する場合はデュアルブート ISO が生成されます</li>
+</ul>
+
+<p><code>--label</code> を省略した場合、ボリュームラベルは <code>GENPACK</code> になります。</p>
+
+<h3>ZIP アーカイブ作成（--zip）</h3>
+
+<pre><code>genpack-install --zip=&lt;出力パス&gt; [system_image]</code></pre>
+
+<p>システムイメージとブートファイルを含む ZIP アーカイブを作成します。</p>
+
+<p><strong>ZIP に含まれるファイル:</strong></p>
+
+<ul>
+<li><code>system.img</code> — システムイメージ</li>
+<li><code>system.cfg</code> — システム設定（<code>--system-cfg</code> 指定時）</li>
+<li><code>system.ini</code> — システム設定（<code>--system-ini</code> 指定時）</li>
+<li>Raspberry Pi のブートファイル（Raspberry Pi イメージの場合）</li>
+</ul>
+
+<h2>ブートローダー</h2>
+
+<p>genpack-install は GRUB をブートローダーとして使用します。ブートローダーファイルは以下の順序で検索されます:</p>
+
+<ol>
+<li>システムイメージ内の <code>/usr/lib/genpack-install/</code></li>
+<li>ホスト側の <code>/usr/local/lib/genpack-install/</code></li>
+<li>ホスト側の <code>/usr/lib/genpack-install/</code></li>
+</ol>
+
+<p><strong>インストールされるファイル:</strong></p>
+
+<ul>
+<li><strong>EFI ブートローダー</strong>: <code>boot*.efi</code> ファイルが <code>efi/boot/</code> にコピーされます</li>
+<li><strong>BIOS ブートローダー</strong>: <code>boot.img</code>、<code>core.img</code>、<code>grub.cfg</code> が存在し <code>grub-bios-setup</code> が利用可能な場合にインストールされます</li>
+</ul>
+
+<p><strong>対応アーキテクチャ:</strong></p>
+
+<table>
+<thead>
+<tr><th>アーキテクチャ</th><th>BIOS</th><th>UEFI</th></tr>
+</thead>
+<tbody>
+<tr><td>x86_64</td><td>boot.img + core.img</td><td>bootx64.efi</td></tr>
+<tr><td>i386</td><td>boot.img + core.img</td><td>bootia32.efi</td></tr>
+<tr><td>aarch64</td><td>—</td><td>bootaa64.efi</td></tr>
+<tr><td>riscv64</td><td>—</td><td>bootriscv64.efi</td></tr>
+</tbody>
+</table>
+
+<p><strong>Raspberry Pi のサポート:</strong></p>
+
+<p>システムイメージに <code>boot/bootcode.bin</code> が含まれる場合、Raspberry Pi イメージとして扱われます。<code>boot/</code> ディレクトリの全ファイルがブートパーティションにコピーされ、<code>cmdline.txt</code> の <code>root=</code> パラメータが <code>root=systemimg:auto</code> に書き換えられます。</p>
+
+<p><strong>grub.cfg の system.img 検索ロジック:</strong></p>
+
+<ol>
+<li>ブートパーティションに <code>system.img</code> が存在すればそれを使用</li>
+<li>存在しない場合、<code>data-{ブートパーティションUUID}</code> ラベルのパーティションを検索</li>
+<li>さらに <code>d-{ブートパーティションUUID}</code> ラベルを検索</li>
+<li>最終手段としてブートパーティション番号から推測（パーティション 1 → パーティション 2 を試行）</li>
+</ol>
+
+<h2>パーティション構成</h2>
+
+<h3>ブートパーティション（FAT32）</h3>
+
+<ul>
+<li>ブートローダー（GRUB EFI ファイル、BIOS イメージ）</li>
+<li>カーネル（<code>boot/kernel</code>）と initramfs（<code>boot/initramfs</code>）</li>
+<li><code>grub.cfg</code></li>
+<li><code>system.cfg</code> / <code>system.ini</code>（指定時）</li>
+<li><strong>4GiB 未満のシステムイメージ</strong>: <code>system.img</code> として格納</li>
+</ul>
+
+<p>ブートパーティションサイズは、システムイメージが 4GiB 未満の場合は <code>max(4, image_size_gib * 3 + 1)</code> GiB、4GiB 以上の場合は 1 GiB です。</p>
+
+<h3>データパーティション（Btrfs）</h3>
+
+<ul>
+<li><code>--superfloppy</code> 使用時は作成されません</li>
+<li>ラベル: <code>data-{ブートパーティションUUID}</code></li>
+<li><strong>4GiB 以上のシステムイメージ</strong>: <code>system</code> として格納</li>
+</ul>
+
+<h2>システムイメージの検証</h2>
+
+<p>genpack-install はインストール前にシステムイメージの検証を行います:</p>
+
+<ol>
+<li><code>.genpack/</code> ディレクトリが存在すること</li>
+<li>以下のいずれかを満たすこと:
+<ul>
+<li><code>boot/kernel</code> と <code>boot/initramfs</code> が存在する（通常のイメージ）</li>
+<li><code>boot/bootcode.bin</code> が存在する（Raspberry Pi イメージ）</li>
+</ul>
+</li>
+</ol>
+
+<p>検証に通過すると、<code>.genpack/artifact</code> と <code>.genpack/variant</code> の内容が表示されます。</p>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-install/tree/4246185bb8c5b32f809fa482a28aa5c39caf5b3e">wbrxcorp/genpack-install @ 4246185</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

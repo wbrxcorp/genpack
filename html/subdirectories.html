@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>アーティファクトのディレクトリ構造</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="アーティファクトのディレクトリ構造" />
+<meta property="og:description" content="genpack アーティファクトを構成するサブディレクトリ（files/, kernel/, savedconfig/, patches/, env/, overlay/）の役割とビルドフェーズとの対応を解説" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/subdirectories.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="アーティファクトのディレクトリ構造" />
+<meta name="twitter:description" content="genpack アーティファクトを構成するサブディレクトリ（files/, kernel/, savedconfig/, patches/, env/, overlay/）の役割とビルドフェーズとの対応を解説" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="subdirectories.en.html">English version</a></p>
+
+<h1>アーティファクトのディレクトリ構造</h1>
+
+<h2>概要</h2>
+
+<p>genpack のアーティファクト（イメージ定義）は、<code>genpack.json5</code> を中心として複数のサブディレクトリで構成されます。各ディレクトリは特定のビルドフェーズで処理され、Portage の設定からカスタムファイルの配置、ビルドスクリプトの実行まで、イメージの内容を定義します。</p>
+
+<h2>ディレクトリ構造の全体像</h2>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">artifact-name/</span>
+<ul>
+<li><span class="label">genpack.json5</span> <span class="desc">— 宣言的イメージ定義 (必須)</span></li>
+<li><span class="label">files/</span> <span class="desc">— ルートファイルシステムにマージされるファイル</span>
+<ul>
+<li><span class="label">build.d/</span> <span class="desc">— ビルド時実行スクリプト (最終イメージには含まれない)</span></li>
+<li><span class="label">etc/</span> <span class="desc">— 設定ファイル</span></li>
+<li><span class="label">usr/</span> <span class="desc">— ライブラリ、バイナリ、systemd ユニット</span></li>
+<li><span class="label">var/</span> <span class="desc">— Web コンテンツ、スプールなど</span></li>
+<li><span class="label">root/</span> <span class="desc">— root ホームディレクトリ</span></li>
+</ul></li>
+<li><span class="label">kernel/</span> <span class="desc">— カーネル設定</span>
+<ul>
+<li><span class="label">config.d/</span> <span class="desc">— カーネル設定フラグメント</span></li>
+</ul></li>
+<li><span class="label">savedconfig/</span> <span class="desc">— Portage savedconfig (アーキテクチャ別)</span></li>
+<li><span class="label">patches/</span> <span class="desc">— Portage パッケージパッチ</span></li>
+<li><span class="label">env/</span> <span class="desc">— Portage パッケージ環境設定</span></li>
+<li><span class="label">overlay/</span> <span class="desc">— ローカル Portage オーバーレイ</span></li>
+</ul></li>
+</ul>
+</div>
+
+<p>全てのサブディレクトリは任意です。最小構成では <code>genpack.json5</code> のみでアーティファクトを定義できます。</p>
+
+<h2>ビルドフェーズとの対応</h2>
+
+<p>genpack のビルドは Lower 層（コンパイル環境）と Upper 層（ランタイム環境）の 2 フェーズで構成されます。各ディレクトリがどのフェーズで処理されるかが重要です。</p>
+
+<table>
+<thead>
+<tr><th>ディレクトリ</th><th>フェーズ</th><th>コピー先</th><th>目的</th></tr>
+</thead>
+<tbody>
+<tr><td><code>savedconfig/</code></td><td>Lower</td><td><code>/etc/portage/savedconfig/</code></td><td>パッケージのカスタムビルド設定</td></tr>
+<tr><td><code>patches/</code></td><td>Lower</td><td><code>/etc/portage/patches/</code></td><td>パッケージへのパッチ適用</td></tr>
+<tr><td><code>kernel/</code></td><td>Lower</td><td><code>/etc/kernel/</code></td><td>カーネルビルド設定</td></tr>
+<tr><td><code>env/</code></td><td>Lower</td><td><code>/etc/portage/env/</code></td><td>パッケージ別ビルド環境変数</td></tr>
+<tr><td><code>overlay/</code></td><td>Lower</td><td><code>/var/db/repos/genpack-local-overlay/</code></td><td>カスタム ebuild</td></tr>
+<tr><td><code>files/</code></td><td>Upper</td><td><code>/</code> (ルート)</td><td>カスタムファイルの配置</td></tr>
+</tbody>
+</table>
+
+<p>Lower フェーズで処理されるディレクトリはいずれも Portage（パッケージマネージャ）に関連するもので、パッケージのコンパイル時に参照されます。<code>files/</code> だけが Upper フェーズで処理され、最終イメージに直接ファイルを配置します。</p>
+
+<h2>files/ — カスタムファイルとビルドスクリプト</h2>
+
+<p><code>files/</code> はアーティファクトのカスタマイズにおいて最も重要なディレクトリです。この下に置いたファイルは、Upper 層の構築時にルートファイルシステムへ再帰的にコピーされます。</p>
+
+<h3>コピーの仕組み</h3>
+
+<p>Upper フェーズで以下のように処理されます:</p>
+
+<pre><code class="language-bash">cp -rdv /mnt/host/files/. /</code></pre>
+
+<ul>
+<li><code>files/etc/systemd/system/myservice.service</code> → <code>/etc/systemd/system/myservice.service</code></li>
+<li><code>files/usr/bin/myscript</code> → <code>/usr/bin/myscript</code></li>
+<li><code>files/root/.bashrc</code> → <code>/root/.bashrc</code></li>
+</ul>
+
+<p>シンボリックリンクは保持され、ファイルのパーミッションも維持されます。</p>
+
+<h3>処理順序</h3>
+
+<p>Upper フェーズ内での処理順序は以下の通りです:</p>
+
+<ol>
+<li>Lower 層からランタイムファイルを選択的にコピー</li>
+<li>パッケージスクリプト (genpack-overlay 由来) を実行</li>
+<li>グループの作成 (<code>genpack.json5</code> の <code>groups</code>)</li>
+<li>ユーザーの作成 (<code>genpack.json5</code> の <code>users</code>)</li>
+<li><strong><code>files/</code> ディレクトリの内容をルートにコピー</strong></li>
+<li><strong><code>files/build.d/</code> 内のビルドスクリプトを実行</strong></li>
+<li><code>setup_commands</code> を実行</li>
+<li>サービスの有効化 (<code>genpack.json5</code> の <code>services</code>)</li>
+</ol>
+
+<p>この順序により、ビルドスクリプトは <code>files/</code> からコピーされたファイルやユーザー定義を前提とした処理が可能です。</p>
+
+<h3>files/build.d/ — ビルドスクリプト</h3>
+
+<p><code>files/build.d/</code> 内のスクリプトは Upper フェーズで実行され、<strong>最終イメージには含まれません</strong>（SquashFS 生成時に除外されます）。パッケージのインストールやファイルのコピーだけでは対応できないカスタマイズに使います。</p>
+
+<h4>実行順序</h4>
+
+<p>スクリプトはファイル名の <strong>アルファベット順</strong> に実行されます。実行順序を制御したい場合は数字プレフィックスを使います:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">01-setup-database.sh</span></li>
+<li><span class="label">02-configure-app.sh</span></li>
+<li><span class="label">03-download-plugins.sh</span></li>
+</ul></li>
+</ul>
+</div>
+
+<h4>インタプリタの自動判定</h4>
+
+<p>スクリプトのインタプリタは拡張子と実行権限から自動的に決定されます:</p>
+
+<table>
+<thead>
+<tr><th>条件</th><th>実行方法</th></tr>
+</thead>
+<tbody>
+<tr><td>実行権限あり</td><td>そのまま直接実行（shebang に従う）</td></tr>
+<tr><td><code>.sh</code> 拡張子（実行権限なし）</td><td><code>/bin/sh</code> で実行</td></tr>
+<tr><td><code>.py</code> 拡張子（実行権限なし）</td><td><code>/usr/bin/python</code> で実行</td></tr>
+<tr><td>その他の拡張子（実行権限なし）</td><td>エラー</td></tr>
+</tbody>
+</table>
+
+<h4>ユーザー別実行</h4>
+
+<p><code>build.d/</code> 内にサブディレクトリを作成すると、そのディレクトリ名のユーザーとしてスクリプトが実行されます:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">setup-system.sh</span> <span class="desc">— root として実行</span></li>
+<li><span class="label">user/</span> <span class="desc">— "user" ユーザーとして実行</span>
+<ul>
+<li><span class="label">setup-dotfiles.sh</span></li>
+<li><span class="label">install-extensions.py</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>サブディレクトリ名がシステム上に存在するユーザー名と一致する必要があります。<code>HOME</code> 環境変数はそのユーザーのホームディレクトリに設定されます。</p>
+
+<h4>利用可能な環境変数</h4>
+
+<table>
+<thead>
+<tr><th>変数</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ARTIFACT</code></td><td><code>genpack.json5</code> の <code>name</code> フィールドの値</td></tr>
+<tr><td><code>VARIANT</code></td><td>ビルド中のバリアント名（指定時のみ）</td></tr>
+</tbody>
+</table>
+
+<h4>典型的な用途</h4>
+
+<p><strong>ソフトウェアのダウンロードとインストール:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# GitHub リリースからバイナリをダウンロード
+ARCH=$(uname -m)
+curl -Lo /usr/bin/tool \
+  "https://github.com/org/tool/releases/latest/download/tool-${ARCH}"
+chmod +x /usr/bin/tool</code></pre>
+
+<p><strong>設定ファイルの編集:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# Apache の SSL モジュールを無効化
+sed -i 's/-D SSL //' /etc/conf.d/apache2</code></pre>
+
+<p><strong>データベースの初期化:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# MySQL のデータベースとユーザーを作成
+/etc/init.d/mysql start
+mysql -e "CREATE DATABASE IF NOT EXISTS myapp;"
+mysql -e "GRANT ALL ON myapp.* TO 'myapp'@'localhost';"
+/etc/init.d/mysql stop</code></pre>
+
+<p><strong>ソースからのビルド:</strong></p>
+
+<pre><code class="language-bash">#!/bin/sh
+# llmnrd をスタティックビルド
+cd /tmp
+git clone --depth 1 https://github.com/tklauser/llmnrd
+cd llmnrd
+make LDFLAGS="-static"
+cp llmnrd /usr/bin/
+cd / &amp;&amp; rm -rf /tmp/llmnrd</code></pre>
+
+<h3>files/ の典型的な構造</h3>
+
+<p>サーバーアーティファクト:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">files/</span>
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">apache-enable-php.sh</span></li>
+<li><span class="label">apache-ssl.sh</span></li>
+<li><span class="label">setup-app.sh</span></li>
+</ul></li>
+<li><span class="label">etc/</span>
+<ul>
+<li><span class="label">logrotate.d/</span>
+<ul>
+<li><span class="label">myapp</span></li>
+</ul></li>
+<li><span class="label">systemd/system/</span>
+<ul>
+<li><span class="label">myapp.service</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">usr/</span>
+<ul>
+<li><span class="label">bin/</span>
+<ul>
+<li><span class="label">myapp-helper</span></li>
+</ul></li>
+<li><span class="label">lib/systemd/system/</span>
+<ul>
+<li><span class="label">myapp-backup.timer</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">var/www/</span>
+<ul>
+<li><span class="label">myapp/</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>デスクトップアーティファクト:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">files/</span>
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">enable-automatic-login</span></li>
+<li><span class="label">enable-noto-cjk.sh</span></li>
+<li><span class="label">enable-pipewire-for-all-users</span></li>
+</ul></li>
+<li><span class="label">etc/</span>
+<ul>
+<li><span class="label">polkit-1/rules.d/</span></li>
+<li><span class="label">xdg/autostart/</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>組み込みアーティファクト:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">files/</span>
+<ul>
+<li><span class="label">build.d/</span>
+<ul>
+<li><span class="label">setup.sh</span></li>
+</ul></li>
+<li><span class="label">etc/</span>
+<ul>
+<li><span class="label">sysctl.d/</span>
+<ul>
+<li><span class="label">tuning.conf</span></li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<h2>kernel/ — カーネル設定</h2>
+
+<p>カーネルのビルド設定をカスタマイズするためのディレクトリです。Lower フェーズで <code>/etc/kernel/</code> にコピーされ、カーネルパッケージのビルド時に参照されます。</p>
+
+<h3>config.d/ — 設定フラグメント</h3>
+
+<p><code>kernel/config.d/</code> 以下に <code>.config</code> ファイルを配置すると、カーネル設定にマージされます。特定のカーネルオプションを有効化・無効化するために使います。</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">kernel/</span>
+<ul>
+<li><span class="label">config.d/</span>
+<ul>
+<li><span class="label">unset.config</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p><code>unset.config</code> の例（stub アーティファクトより、不要機能の無効化）:</p>
+
+<pre><code># CONFIG_HIBERNATION is not set
+# CONFIG_SUSPEND is not set
+# CONFIG_XEN is not set
+# CONFIG_NUMA is not set
+# CONFIG_DEBUG_KERNEL is not set
+# CONFIG_KEXEC_SIG is not set</code></pre>
+
+<h2>savedconfig/ — Portage savedconfig</h2>
+
+<p>カーネルなど、ビルド時にカスタム設定ファイルを参照するパッケージのための設定を配置するディレクトリです。Lower フェーズで <code>/etc/portage/savedconfig/</code> にコピーされます。</p>
+
+<h3>アーキテクチャ別の構成</h3>
+
+<p>savedconfig はアーキテクチャごとにサブディレクトリを分けます。ディレクトリ名は Gentoo の CHOST 値です:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">savedconfig/</span>
+<ul>
+<li><span class="label">aarch64-unknown-linux-gnu/</span>
+<ul>
+<li><span class="label">sys-kernel/</span>
+<ul>
+<li><span class="label">gentoo-kernel</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">riscv64-unknown-linux-gnu/</span>
+<ul>
+<li><span class="label">sys-kernel/</span>
+<ul>
+<li><span class="label">gentoo-kernel</span></li>
+</ul></li>
+</ul></li>
+<li><span class="label">x86_64-pc-linux-gnu/</span>
+<ul>
+<li><span class="label">sys-kernel/</span>
+<ul>
+<li><span class="label">gentoo-kernel</span></li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>これにより、同一アーティファクトから複数アーキテクチャのイメージをビルドする際に、アーキテクチャ固有のカーネル設定を適用できます。カーネルパッケージの USE フラグに <code>savedconfig</code> を指定すると Portage がこの設定を参照します。</p>
+
+<h2>patches/ — Portage パッケージパッチ</h2>
+
+<p>特定のパッケージにパッチを適用するためのディレクトリです。Lower フェーズで <code>/etc/portage/patches/</code> にコピーされ、Portage のユーザーパッチ機能 (<code>user patches</code>) を通じて適用されます。</p>
+
+<h3>ディレクトリ構造</h3>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">patches/</span>
+<ul>
+<li><span class="label">&lt;category&gt;/&lt;package&gt;/</span>
+<ul>
+<li><span class="label">&lt;patchname&gt;.patch</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>例:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">patches/</span>
+<ul>
+<li><span class="label">dev-libs/weston/</span>
+<ul>
+<li><span class="label">default-output-and-autolaunch-args.patch</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>この場合、<code>dev-libs/weston</code> パッケージのビルド時に自動的にパッチが適用されます。バージョン固有のパッチが必要な場合は <code>&lt;package&gt;-&lt;version&gt;/</code> でディレクトリ名を指定できます。</p>
+
+<h2>env/ — Portage パッケージ環境設定</h2>
+
+<p>特定のパッケージのビルド時に環境変数を設定するためのディレクトリです。Lower フェーズで <code>/etc/portage/env/</code> にコピーされます。</p>
+
+<h3>使い方</h3>
+
+<p>設定ファイルを作成し、<code>genpack.json5</code> の <code>env</code> フィールドからパッケージに割り当てます:</p>
+
+<p><code>env/torch_cuda.conf</code>:</p>
+
+<pre><code class="language-bash">CUDA_HOME="/opt/cuda"
+MAKEOPTS="-j4"</code></pre>
+
+<p><code>genpack.json5</code>:</p>
+
+<pre><code class="language-json5">{
+  env: {
+    "sci-libs/pytorch": "torch_cuda.conf"
+  }
+}</code></pre>
+
+<h2>overlay/ — ローカル Portage オーバーレイ</h2>
+
+<p>公式リポジトリや genpack-overlay にないカスタムパッケージ（ebuild）を追加するためのディレクトリです。Lower フェーズで <code>/var/db/repos/genpack-local-overlay/</code> にコピーされ、repos.conf やメタデータが自動生成されます。</p>
+
+<h3>ディレクトリ構造</h3>
+
+<p>標準的な Gentoo オーバーレイの構造に従います:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">overlay/</span>
+<ul>
+<li><span class="label">&lt;category&gt;/&lt;package&gt;/</span>
+<ul>
+<li><span class="label">Manifest</span></li>
+<li><span class="label">&lt;package&gt;-&lt;version&gt;.ebuild</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>例:</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">overlay/</span>
+<ul>
+<li><span class="label">media-libs/virglrenderer/</span>
+<ul>
+<li><span class="label">Manifest</span></li>
+<li><span class="label">virglrenderer-9999.ebuild</span></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+
+<p>genpack が自動的に <code>metadata/layout.conf</code>、<code>profiles/repo_name</code>、<code>repos.conf</code> を生成するため、これらのファイルを手動で用意する必要はありません。</p>
+
+<h2>リビルドのトリガー</h2>
+
+<p>Lower 層の再ビルドが必要かどうかは、以下のファイル・ディレクトリの更新タイムスタンプで判定されます:</p>
+
+<ul>
+<li><code>genpack.json5</code>（または <code>genpack.json</code>）</li>
+<li><code>savedconfig/</code></li>
+<li><code>patches/</code></li>
+<li><code>kernel/</code></li>
+<li><code>env/</code></li>
+<li><code>overlay/</code></li>
+</ul>
+
+<p><strong><code>files/</code> ディレクトリは Lower 層の再ビルドトリガーに含まれません。</strong> <code>files/</code> は Upper フェーズでのみ処理されるため、<code>files/</code> の変更は Upper 層の再ビルドで反映されます。</p>
+
+<h2>アーカイブ</h2>
+
+<p><code>genpack archive</code> コマンドを実行すると、<code>genpack.json5</code> と全てのサブディレクトリ（<code>files/</code>, <code>savedconfig/</code>, <code>patches/</code>, <code>kernel/</code>, <code>env/</code>, <code>overlay/</code>）を含む <code>genpack-&lt;name&gt;.tar.gz</code> が生成されます。これによりアーティファクト定義を配布できます。</p>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b">wbrxcorp/genpack-overlay @ 45a7e1e</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

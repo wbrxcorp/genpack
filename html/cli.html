@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack CLI リファレンス</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack CLI リファレンス" />
+<meta property="og:description" content="genpack コマンドのサブコマンドとオプションの一覧" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/cli.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack CLI リファレンス" />
+<meta name="twitter:description" content="genpack コマンドのサブコマンドとオプションの一覧" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="cli.en.html">English version</a></p>
+
+<h1>genpack CLI リファレンス</h1>
+
+<h2>概要</h2>
+
+<p><code>genpack</code> は genpack ツールチェーンのメインコマンドです。カレントディレクトリの <code>genpack.json5</code>（または <code>genpack.json</code>）を読み取り、サブコマンドに応じた処理を実行します。</p>
+
+<pre><code>genpack [グローバルオプション] &lt;サブコマンド&gt;</code></pre>
+
+<h2>グローバルオプション</h2>
+
+<p>全サブコマンドに共通のオプションです。</p>
+
+<table>
+<thead>
+<tr><th>オプション</th><th>型</th><th>デフォルト</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--debug</code></td><td>フラグ</td><td>false</td><td>DEBUG レベルのログを表示</td></tr>
+<tr><td><code>--overlay-override &lt;DIR&gt;</code></td><td>パス</td><td>(なし)</td><td>genpack-overlay のローカルオーバーライドディレクトリ</td></tr>
+<tr><td><code>--independent-binpkgs</code></td><td>フラグ</td><td>false</td><td>アーティファクト固有のバイナリパッケージキャッシュを使用</td></tr>
+<tr><td><code>--deep-depclean</code></td><td>フラグ</td><td>false</td><td>ビルド依存を含む深いクリーンアップを実行</td></tr>
+<tr><td><code>--compression &lt;ALG&gt;</code></td><td>選択</td><td>(設定に従う)</td><td>SquashFS 圧縮: <code>gzip</code>, <code>xz</code>, <code>lzo</code>, <code>none</code></td></tr>
+<tr><td><code>--devel</code></td><td>フラグ</td><td>false</td><td>開発イメージの生成</td></tr>
+<tr><td><code>--variant &lt;NAME&gt;</code></td><td>文字列</td><td>(設定に従う)</td><td>使用するバリアント名</td></tr>
+</tbody>
+</table>
+
+<h3>--overlay-override</h3>
+
+<p>genpack-overlay のリポジトリ (通常は GitHub から自動取得) をローカルディレクトリで上書きします。genpack-overlay 自体の開発時に使用します。</p>
+
+<h3>--independent-binpkgs</h3>
+
+<p>デフォルトでは <code>~/.cache/genpack/{arch}/binpkgs/</code> にある共有バイナリパッケージキャッシュを使用しますが、このオプションを指定するとアーティファクトごとに独立したキャッシュを使います。USE フラグが大きく異なるアーティファクト間での干渉を避けるために使用します。</p>
+
+<h2>サブコマンド</h2>
+
+<h3>build</h3>
+
+<p>フルビルドパイプライン (lower → upper → pack) を実行します。</p>
+
+<pre><code>genpack build</code></pre>
+
+<p>サブコマンドを省略した場合のデフォルト動作です。以下の 3 フェーズを順に実行します:</p>
+
+<ol>
+<li><strong>Lower 層のビルド</strong>: stage3 + Portage でパッケージをコンパイル</li>
+<li><strong>Upper 層のビルド</strong>: ランタイムファイルの抽出とカスタマイズ</li>
+<li><strong>パック</strong>: SquashFS 圧縮</li>
+</ol>
+
+<p>初回実行時に <code>.gitignore</code> と <code>.vscode/settings.json</code> がなければ自動生成します。</p>
+
+<h3>lower</h3>
+
+<p>Lower 層（ビルド環境）を構築します。</p>
+
+<pre><code>genpack lower</code></pre>
+
+<p>処理の流れ:</p>
+
+<ol>
+<li><code>work/{arch}/</code> ディレクトリを作成</li>
+<li>Gentoo stage3 tarball をダウンロード（キャッシュあり）</li>
+<li>Portage スナップショットをダウンロード（キャッシュあり）</li>
+<li>ext4 ファイルシステムイメージ (<code>lower.img</code>) を作成</li>
+<li>stage3 と Portage を展開</li>
+<li>genpack-overlay を同期</li>
+<li>Portage プロファイルを設定</li>
+<li><code>genpack.json5</code> の設定（USE フラグ、キーワード、ライセンス、マスク）を適用</li>
+<li>循環依存の解決（<code>circulardep_breaker</code> がある場合）</li>
+<li>全パッケージを emerge</li>
+<li>カーネルモジュールの再ビルド</li>
+<li>depclean, eclean によるクリーンアップ</li>
+<li>Upper 層用のファイルリスト (<code>lower.files</code>) を生成</li>
+</ol>
+
+<p>Lower 層の再ビルドが必要かどうかは <code>genpack.json5</code> と Portage 関連サブディレクトリ（<code>savedconfig/</code>, <code>patches/</code>, <code>kernel/</code>, <code>env/</code>, <code>overlay/</code>）のタイムスタンプで判定されます。</p>
+
+<h3>upper</h3>
+
+<p>Upper 層（ランタイム環境）を構築します。</p>
+
+<pre><code>genpack upper</code></pre>
+
+<p><strong>前提条件</strong>: <code>lower</code> の実行が完了していること。</p>
+
+<p>処理の流れ:</p>
+
+<ol>
+<li>Upper 層用の ext4 イメージ (<code>upper.img</code>) を作成</li>
+<li>Lower 層から <code>lower.files</code> に記載されたファイルをコピー</li>
+<li>パッケージスクリプトを実行</li>
+<li>グループとユーザーを作成</li>
+<li><code>files/</code> ディレクトリの内容をルートにコピー</li>
+<li><code>files/build.d/</code> のビルドスクリプトを実行</li>
+<li><code>setup_commands</code> を実行</li>
+<li>systemd サービスを有効化</li>
+</ol>
+
+<h3>pack</h3>
+
+<p>Upper 層から SquashFS イメージを生成します。</p>
+
+<pre><code>genpack pack</code></pre>
+
+<p><strong>前提条件</strong>: <code>lower</code> と <code>upper</code> の両方が完了していること。</p>
+
+<p>処理:</p>
+
+<ol>
+<li>Upper 層を SquashFS に圧縮</li>
+<li><code>build.d/</code>、ログファイル、一時ファイルを除外</li>
+<li>EFI ファイルが存在する場合は EFI スーパーフロッピーイメージも生成</li>
+</ol>
+
+<p><strong>出力ファイル</strong>:</p>
+
+<table>
+<thead>
+<tr><th>ファイル</th><th>条件</th></tr>
+</thead>
+<tbody>
+<tr><td><code>{name}-{arch}.squashfs</code></td><td>常に生成</td></tr>
+<tr><td><code>{name}-{arch}.img</code></td><td>EFI ブートローダーが含まれる場合</td></tr>
+</tbody>
+</table>
+
+<p><strong>圧縮方式の詳細</strong>:</p>
+
+<table>
+<thead>
+<tr><th>方式</th><th>mksquashfs オプション</th><th>特徴</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gzip</code></td><td><code>-Xcompression-level 1</code></td><td>デフォルト。高速</td></tr>
+<tr><td><code>xz</code></td><td><code>-comp xz -b 1M</code></td><td>最小サイズ。時間がかかる</td></tr>
+<tr><td><code>lzo</code></td><td><code>-comp lzo</code></td><td>高速。gzip より低圧縮</td></tr>
+<tr><td><code>none</code></td><td><code>-no-compression</code></td><td>無圧縮</td></tr>
+</tbody>
+</table>
+
+<h3>bash</h3>
+
+<p>Lower 層の対話的デバッグシェルを開きます。</p>
+
+<pre><code>genpack bash</code></pre>
+
+<p>systemd-nspawn コンテナ内で bash シェルが起動し、Lower 層のファイルシステムを直接操作・確認できます。パッケージのインストール状態の確認やデバッグに使用します。</p>
+
+<p>終了時にバイナリパッケージのメタデータが自動更新されます。</p>
+
+<h3>upper-bash</h3>
+
+<p>Upper 層のオーバーレイ上で対話的デバッグシェルを開きます。</p>
+
+<pre><code>genpack upper-bash</code></pre>
+
+<p><strong>前提条件</strong>: <code>upper</code> の実行が完了していること。</p>
+
+<p>最終イメージの内容を確認・デバッグするために使用します。</p>
+
+<h3>archive</h3>
+
+<p>アーティファクト定義の配布用アーカイブを作成します。</p>
+
+<pre><code>genpack archive</code></pre>
+
+<p><code>genpack.json5</code> と全サブディレクトリ（<code>files/</code>, <code>savedconfig/</code>, <code>patches/</code>, <code>kernel/</code>, <code>env/</code>, <code>overlay/</code>）を含む <code>genpack-{name}.tar.gz</code> を生成します。</p>
+
+<h2>ワークディレクトリの構造</h2>
+
+<p><code>genpack</code> は <code>work/</code> ディレクトリ以下にビルド成果物とキャッシュを配置します。</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">work/</span>
+<ul>
+<li><span class="label">.dirlock</span> <span class="desc">-- 排他ロックファイル</span></li>
+<li><span class="label">portage.tar.xz</span> <span class="desc">-- Portage スナップショット (キャッシュ)</span></li>
+<li><span class="label">portage.tar.xz.headers</span> <span class="desc">-- キャッシュ検証用ヘッダ</span></li>
+<li><span class="label">{arch}/</span>
+<ul>
+<li><span class="label">lower.img</span> <span class="desc">-- Lower 層ファイルシステム (デフォルト 128 GiB)</span></li>
+<li><span class="label">lower.files</span> <span class="desc">-- Upper 層にコピーするファイルリスト</span></li>
+<li><span class="label">upper.img</span> <span class="desc">-- Upper 層ファイルシステム (デフォルト 20 GiB)</span></li>
+<li><span class="label">stage3.tar.xz</span> <span class="desc">-- stage3 tarball (キャッシュ)</span></li>
+<li><span class="label">stage3.tar.xz.headers</span> <span class="desc">-- キャッシュ検証用ヘッダ</span></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+
+<h2>キャッシュ</h2>
+
+<h3>ダウンロードキャッシュ</h3>
+
+<p>stage3 と Portage スナップショットは <code>work/</code> 以下にキャッシュされます。HTTP ヘッダ（<code>Last-Modified</code>, <code>ETag</code>, <code>Content-Length</code>）で検証し、変更がなければ再ダウンロードしません。</p>
+
+<h3>バイナリパッケージキャッシュ</h3>
+
+<p>デフォルトでは <code>~/.cache/genpack/{arch}/binpkgs/</code> にバイナリパッケージが共有キャッシュとして保存されます。同じアーキテクチャの異なるアーティファクト間でコンパイル済みパッケージを再利用できます。</p>
+
+<p><code>--independent-binpkgs</code> を指定すると、この共有キャッシュの代わりにアーティファクトごとの独立したキャッシュを使用します。</p>
+
+<h3>genpack-overlay キャッシュ</h3>
+
+<p><code>~/.cache/genpack/overlay/</code> に genpack-overlay の git リポジトリがキャッシュされます。</p>
+
+<h2>環境変数</h2>
+
+<p>genpack 自体が参照する環境変数はありませんが、ビルドプロセス中に以下の環境変数がコンテナ内で設定されます:</p>
+
+<table>
+<thead>
+<tr><th>変数</th><th>設定タイミング</th><th>値</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ARTIFACT</code></td><td>Upper 層ビルド時</td><td><code>genpack.json5</code> の <code>name</code></td></tr>
+<tr><td><code>VARIANT</code></td><td>Upper 層ビルド時</td><td>バリアント名（指定時のみ）</td></tr>
+</tbody>
+</table>
+
+<h2>デフォルト値</h2>
+
+<table>
+<thead>
+<tr><th>設定</th><th>値</th></tr>
+</thead>
+<tbody>
+<tr><td>Lower 層イメージサイズ</td><td>128 GiB</td></tr>
+<tr><td>Upper 層イメージサイズ</td><td>20 GiB</td></tr>
+<tr><td>genpack-overlay リポジトリ</td><td><code>https://github.com/wbrxcorp/genpack-overlay.git</code></td></tr>
+<tr><td>Gentoo ミラー</td><td><code>http://ftp.iij.ad.jp/pub/linux/gentoo/</code></td></tr>
+<tr><td>デフォルト圧縮</td><td>gzip</td></tr>
+</tbody>
+</table>
+
+<h2>典型的な使い方</h2>
+
+<pre><code># フルビルド
+genpack build
+
+# フルビルド (xz 圧縮)
+genpack --compression xz build
+
+# バリアントを指定してビルド
+genpack --variant cuda build
+
+# ステップごとのビルド
+genpack lower
+genpack upper
+genpack pack
+
+# デバッグ (Lower 層のシェル)
+genpack bash
+
+# デバッグ (Upper 層のシェル)
+genpack upper-bash
+
+# デバッグ (詳細ログ)
+genpack --debug build
+
+# genpack-overlay のローカル版でビルド
+genpack --overlay-override ~/projects/genpack-overlay build
+
+# アーカイブ作成
+genpack archive</code></pre>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>
