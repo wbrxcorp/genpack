@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack/devlauncher メタパッケージ</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack/devlauncher メタパッケージ" />
+<meta property="og:description" content="Wayland環境でのGUI開発作業に必要なツール一式をまとめたメタパッケージの解説" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/overlay-devlauncher.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack/devlauncher メタパッケージ" />
+<meta name="twitter:description" content="Wayland環境でのGUI開発作業に必要なツール一式をまとめたメタパッケージの解説" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="overlay-devlauncher.en.html">English version</a></p>
+
+<h1>genpack/devlauncher メタパッケージ</h1>
+
+<h2>概要</h2>
+
+<p><code>genpack/devlauncher</code> は、Wayland環境でのGUI開発作業に必要なツール一式をまとめたメタパッケージである。GTK4ベースのアプリケーションランチャー (<code>devlauncher</code>) をインストールし、エディタ、ブラウザ、ターミナルエミュレータ、コンテナツール、コマンドラインユーティリティ等を一括で導入する。</p>
+
+<h2>依存パッケージ一覧</h2>
+
+<h3>開発基盤 (genpack/devel 経由)</h3>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-devel/binutils</code></td><td>バイナリユーティリティ</td></tr>
+<tr><td><code>sys-devel/gcc</code></td><td>GCC コンパイラ</td></tr>
+<tr><td><code>dev-debug/gdb</code></td><td>GDB デバッガ</td></tr>
+</tbody>
+</table>
+
+<h3>GUI アプリケーション</h3>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>www-client/google-chrome</code></td><td>Web ブラウザ</td></tr>
+<tr><td><code>app-editors/vscode[wayland]</code></td><td>Visual Studio Code</td></tr>
+<tr><td><code>x11-terms/ghostty</code> (&lt;1.2)</td><td>Ghostty ターミナルエミュレータ</td></tr>
+<tr><td><code>app-text/xournalpp</code></td><td>手書きノート・PDF注釈 (GTK3)</td></tr>
+<tr><td><code>dev-util/claude-code</code></td><td>Claude Code CLI</td></tr>
+</tbody>
+</table>
+
+<h3>GUI 基盤</h3>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gui-apps/waypipe[lz4,zstd]</code></td><td>Wayland リモートディスプレイ転送</td></tr>
+<tr><td><code>gui-libs/gtk[wayland]</code></td><td>GTK4 (devlauncher 本体が使用)</td></tr>
+<tr><td><code>x11-libs/gtk+[wayland]</code></td><td>GTK3 (xournalpp 等が使用)</td></tr>
+<tr><td><code>dev-python/pygobject</code></td><td>Python GObject バインディング</td></tr>
+<tr><td><code>media-fonts/noto</code></td><td>Noto フォント</td></tr>
+<tr><td><code>media-fonts/noto-cjk</code></td><td>Noto CJK フォント</td></tr>
+<tr><td><code>media-fonts/noto-emoji</code></td><td>Noto 絵文字フォント</td></tr>
+<tr><td><code>media-sound/alsa-utils</code></td><td>ALSA オーディオユーティリティ</td></tr>
+</tbody>
+</table>
+
+<h3>コンテナ</h3>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>app-containers/docker</code></td><td>Docker コンテナエンジン</td></tr>
+<tr><td><code>app-containers/docker-compose</code></td><td>Docker Compose</td></tr>
+</tbody>
+</table>
+
+<h3>コマンドラインツール</h3>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>app-admin/sudo</code></td><td>特権昇格</td></tr>
+<tr><td><code>sys-process/psmisc</code></td><td>プロセス管理ユーティリティ</td></tr>
+<tr><td><code>app-misc/jq</code></td><td>JSON プロセッサ</td></tr>
+<tr><td><code>sys-apps/fd</code></td><td>ファイル検索</td></tr>
+<tr><td><code>app-text/tree</code></td><td>ディレクトリツリー表示</td></tr>
+<tr><td><code>sys-apps/bat</code></td><td>シンタックスハイライト付き cat</td></tr>
+<tr><td><code>dev-python/pip</code></td><td>Python パッケージマネージャ</td></tr>
+<tr><td><code>dev-python/pylint</code></td><td>Python リンター</td></tr>
+<tr><td><code>dev-python/pytest</code></td><td>Python テストフレームワーク</td></tr>
+</tbody>
+</table>
+
+<h2>devlauncher アプリケーション</h2>
+
+<p><code>/usr/bin/devlauncher</code> としてインストールされる GTK4 (PyGObject) ベースのアプリケーションランチャー。起動するとインストール済みの <code>.desktop</code> アプリケーションをグリッド表示し、クリックで起動できる。</p>
+
+<h3>Wayland 環境の自動検出</h3>
+
+<p><code>devlauncher</code> は起動時に以下の条件を確認し、環境変数を自動設定する：</p>
+
+<ul>
+<li><code>WAYLAND_DISPLAY</code> が設定されている</li>
+<li><code>DISPLAY</code> が設定されていない（X11 でない）</li>
+<li><code>XDG_SESSION_TYPE</code> が <code>wayland</code> でない</li>
+</ul>
+
+<p>この条件に該当する場合、<code>XDG_SESSION_TYPE=wayland</code> と <code>MOZ_ENABLE_WAYLAND=1</code> を設定する。waypipe SSH 経由でのリモート接続時に Wayland セッション情報が不完全なケースを補完する目的がある。</p>
+
+<h2>間接的に必須となるフラグ</h2>
+
+<p>devlauncher とその依存パッケージを正しくビルドするには、ebuild の RDEPEND で直接指定されるもの以外にも、間接的な依存関係で要求される USE フラグがある。<code>weston</code> プロファイルを使用する場合はプロファイル側で設定されるが、<code>paravirt</code> 等の GUI 設定を持たないプロファイルと組み合わせる場合は <code>genpack.json5</code> の <code>use</code> セクションで明示的に指定する必要がある。</p>
+
+<h3>ライセンス承諾</h3>
+
+<p>プロプライエタリパッケージには <code>genpack.json5</code> の <code>license</code> セクションでの承諾が必要：</p>
+
+<pre><code class="language-json5">license: {
+    "www-client/google-chrome": "google-chrome",
+    "dev-util/claude-code": "all-rights-reserved",
+    "app-editors/vscode": "Microsoft-vscode"
+}</code></pre>
+
+<h3>Wayland/ディスプレイ関連</h3>
+
+<p>GTK が Wayland バックエンドで動作するには、グラフィックスタックにも Wayland サポートが必要となる。</p>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>USE フラグ</th><th>理由</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gui-libs/gtk</code></td><td><code>wayland</code></td><td>GTK4 の Wayland バックエンド。devlauncher が直接使用</td></tr>
+<tr><td><code>x11-libs/gtk+</code></td><td><code>wayland</code></td><td>GTK3 の Wayland バックエンド。xournalpp 等が使用</td></tr>
+<tr><td><code>media-libs/mesa</code></td><td><code>vulkan wayland</code></td><td><code>gtk[wayland]</code> が <code>mesa[wayland]</code> を要求。<code>vulkan</code> は lavapipe/zink の REQUIRED_USE</td></tr>
+<tr><td><code>x11-libs/cairo</code></td><td><code>X</code></td><td><code>gtk+[X]</code> が要求。Chrome/Electron 系の依存チェーンで必要</td></tr>
+<tr><td><code>media-libs/libglvnd</code></td><td><code>X</code></td><td><code>gtk+</code> 経由で要求</td></tr>
+<tr><td><code>app-crypt/gcr</code></td><td><code>gtk</code></td><td>VSCode &rarr; gnome-keyring &rarr; gcr の依存チェーン</td></tr>
+<tr><td><code>media-libs/freetype</code></td><td><code>harfbuzz</code></td><td>フォントレンダリング。harfbuzz との循環依存あり</td></tr>
+<tr><td><code>app-text/poppler</code></td><td><code>cairo</code></td><td>xournalpp の PDF 描画で必要</td></tr>
+</tbody>
+</table>
+
+<h3>循環依存の解決</h3>
+
+<p><code>media-libs/freetype</code> と <code>media-libs/harfbuzz</code> は相互依存の関係にあるため、<code>circulardep_breaker</code> の設定が必要：</p>
+
+<pre><code class="language-json5">circulardep_breaker: {
+    packages: ["media-libs/freetype", "media-libs/harfbuzz"],
+    use: "-harfbuzz -truetype"
+}</code></pre>
+
+<h3>genpack.json5 での設定例</h3>
+
+<p><code>paravirt</code> プロファイルで devlauncher を使用する場合の最小限の USE フラグ設定：</p>
+
+<pre><code class="language-json5">{
+    profile: "paravirt",
+    packages: ["genpack/devlauncher"],
+    use: {
+        "gui-libs/gtk": "wayland",
+        "x11-libs/gtk+": "wayland",
+        "media-libs/mesa": "vulkan wayland",
+        "x11-libs/cairo": "X",
+        "media-libs/libglvnd": "X",
+        "media-libs/freetype": "harfbuzz",
+        "app-crypt/gcr": "gtk",
+        "app-text/poppler": "cairo"
+    },
+    circulardep_breaker: {
+        packages: ["media-libs/freetype", "media-libs/harfbuzz"],
+        use: "-harfbuzz -truetype"
+    },
+    license: {
+        "www-client/google-chrome": "google-chrome",
+        "dev-util/claude-code": "all-rights-reserved",
+        "app-editors/vscode": "Microsoft-vscode"
+    }
+}</code></pre>
+
+<h3>weston プロファイルとの関係</h3>
+
+<p><code>weston</code> プロファイルは <code>make.defaults</code> でグローバルに <code>USE="wayland -X"</code> を設定し、<code>package.use</code> で上記のほとんどの USE フラグをカバーしている。ただし <code>weston/paravirt</code> プロファイルは Weston コンポジタを含む完全なデスクトップ環境を前提としており、waypipe 経由のリモート表示のみで使う場合は過剰になる。<code>paravirt</code> プロファイルに必要な USE フラグを個別指定する方が軽量なイメージを構築できる。</p>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/main/genpack/devlauncher">genpack/devlauncher ebuild</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/blob/main/profiles/genpack/weston/package.use">profiles/genpack/weston/package.use</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/blob/main/profiles/genpack/paravirt/package.use">profiles/genpack/paravirt/package.use</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

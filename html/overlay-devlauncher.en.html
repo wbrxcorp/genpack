@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack/devlauncher Metapackage</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack/devlauncher Metapackage" />
+<meta property="og:description" content="A metapackage bundling tools for GUI development in a Wayland environment" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/overlay-devlauncher.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack/devlauncher Metapackage" />
+<meta name="twitter:description" content="A metapackage bundling tools for GUI development in a Wayland environment" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<h1>genpack/devlauncher Metapackage</h1>
+
+<h2>Overview</h2>
+
+<p><code>genpack/devlauncher</code> is a metapackage that bundles the tools needed for GUI development work in a Wayland environment. It installs a GTK4-based application launcher (<code>devlauncher</code>) along with editors, browsers, terminal emulators, container tools, and command-line utilities.</p>
+
+<h2>Dependency Package List</h2>
+
+<h3>Development Foundation (via genpack/devel)</h3>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-devel/binutils</code></td><td>Binary utilities</td></tr>
+<tr><td><code>sys-devel/gcc</code></td><td>GCC compiler</td></tr>
+<tr><td><code>dev-debug/gdb</code></td><td>GDB debugger</td></tr>
+</tbody>
+</table>
+
+<h3>GUI Applications</h3>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>www-client/google-chrome</code></td><td>Web browser</td></tr>
+<tr><td><code>app-editors/vscode[wayland]</code></td><td>Visual Studio Code</td></tr>
+<tr><td><code>x11-terms/ghostty</code> (&lt;1.2)</td><td>Ghostty terminal emulator</td></tr>
+<tr><td><code>app-text/xournalpp</code></td><td>Handwriting notes &amp; PDF annotation (GTK3)</td></tr>
+<tr><td><code>dev-util/claude-code</code></td><td>Claude Code CLI</td></tr>
+</tbody>
+</table>
+
+<h3>GUI Foundation</h3>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gui-apps/waypipe[lz4,zstd]</code></td><td>Wayland remote display forwarding</td></tr>
+<tr><td><code>gui-libs/gtk[wayland]</code></td><td>GTK4 (used by devlauncher itself)</td></tr>
+<tr><td><code>x11-libs/gtk+[wayland]</code></td><td>GTK3 (used by xournalpp etc.)</td></tr>
+<tr><td><code>dev-python/pygobject</code></td><td>Python GObject bindings</td></tr>
+<tr><td><code>media-fonts/noto</code></td><td>Noto fonts</td></tr>
+<tr><td><code>media-fonts/noto-cjk</code></td><td>Noto CJK fonts</td></tr>
+<tr><td><code>media-fonts/noto-emoji</code></td><td>Noto emoji fonts</td></tr>
+<tr><td><code>media-sound/alsa-utils</code></td><td>ALSA audio utilities</td></tr>
+</tbody>
+</table>
+
+<h3>Containers</h3>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>app-containers/docker</code></td><td>Docker container engine</td></tr>
+<tr><td><code>app-containers/docker-compose</code></td><td>Docker Compose</td></tr>
+</tbody>
+</table>
+
+<h3>Command-Line Tools</h3>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>app-admin/sudo</code></td><td>Privilege escalation</td></tr>
+<tr><td><code>sys-process/psmisc</code></td><td>Process management utilities</td></tr>
+<tr><td><code>app-misc/jq</code></td><td>JSON processor</td></tr>
+<tr><td><code>sys-apps/fd</code></td><td>File search</td></tr>
+<tr><td><code>app-text/tree</code></td><td>Directory tree display</td></tr>
+<tr><td><code>sys-apps/bat</code></td><td>cat with syntax highlighting</td></tr>
+<tr><td><code>dev-python/pip</code></td><td>Python package manager</td></tr>
+<tr><td><code>dev-python/pylint</code></td><td>Python linter</td></tr>
+<tr><td><code>dev-python/pytest</code></td><td>Python test framework</td></tr>
+</tbody>
+</table>
+
+<h2>devlauncher Application</h2>
+
+<p>A GTK4 (PyGObject) based application launcher installed as <code>/usr/bin/devlauncher</code>. When launched, it displays installed <code>.desktop</code> applications in a grid view and allows launching them by clicking.</p>
+
+<h3>Automatic Wayland Environment Detection</h3>
+
+<p><code>devlauncher</code> checks the following conditions at startup and automatically sets environment variables:</p>
+
+<ul>
+<li><code>WAYLAND_DISPLAY</code> is set</li>
+<li><code>DISPLAY</code> is not set (not X11)</li>
+<li><code>XDG_SESSION_TYPE</code> is not <code>wayland</code></li>
+</ul>
+
+<p>When these conditions are met, it sets <code>XDG_SESSION_TYPE=wayland</code> and <code>MOZ_ENABLE_WAYLAND=1</code>. This compensates for cases where Wayland session information is incomplete during remote connections via waypipe SSH.</p>
+
+<h2>Indirectly Required Flags</h2>
+
+<p>To correctly build devlauncher and its dependencies, there are USE flags required by indirect dependencies beyond what is directly specified in the ebuild&rsquo;s RDEPEND. When using the <code>weston</code> profile, these are set by the profile itself, but when combining with profiles that lack GUI settings such as <code>paravirt</code>, they must be explicitly specified in the <code>use</code> section of <code>genpack.json5</code>.</p>
+
+<h3>License Acceptance</h3>
+
+<p>Proprietary packages require acceptance in the <code>license</code> section of <code>genpack.json5</code>:</p>
+
+<pre><code class="language-json5">license: {
+    "www-client/google-chrome": "google-chrome",
+    "dev-util/claude-code": "all-rights-reserved",
+    "app-editors/vscode": "Microsoft-vscode"
+}</code></pre>
+
+<h3>Wayland/Display Related</h3>
+
+<p>For GTK to work with the Wayland backend, the graphics stack also needs Wayland support.</p>
+
+<table>
+<thead>
+<tr><th>Package</th><th>USE Flag</th><th>Reason</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gui-libs/gtk</code></td><td><code>wayland</code></td><td>GTK4 Wayland backend. Directly used by devlauncher</td></tr>
+<tr><td><code>x11-libs/gtk+</code></td><td><code>wayland</code></td><td>GTK3 Wayland backend. Used by xournalpp etc.</td></tr>
+<tr><td><code>media-libs/mesa</code></td><td><code>vulkan wayland</code></td><td><code>gtk[wayland]</code> requires <code>mesa[wayland]</code>. <code>vulkan</code> is REQUIRED_USE for lavapipe/zink</td></tr>
+<tr><td><code>x11-libs/cairo</code></td><td><code>X</code></td><td>Required by <code>gtk+[X]</code>. Needed for Chrome/Electron dependency chain</td></tr>
+<tr><td><code>media-libs/libglvnd</code></td><td><code>X</code></td><td>Required via <code>gtk+</code></td></tr>
+<tr><td><code>app-crypt/gcr</code></td><td><code>gtk</code></td><td>VSCode &rarr; gnome-keyring &rarr; gcr dependency chain</td></tr>
+<tr><td><code>media-libs/freetype</code></td><td><code>harfbuzz</code></td><td>Font rendering. Has circular dependency with harfbuzz</td></tr>
+<tr><td><code>app-text/poppler</code></td><td><code>cairo</code></td><td>Required for xournalpp PDF rendering</td></tr>
+</tbody>
+</table>
+
+<h3>Circular Dependency Resolution</h3>
+
+<p><code>media-libs/freetype</code> and <code>media-libs/harfbuzz</code> have a mutual dependency, requiring <code>circulardep_breaker</code> configuration:</p>
+
+<pre><code class="language-json5">circulardep_breaker: {
+    packages: ["media-libs/freetype", "media-libs/harfbuzz"],
+    use: "-harfbuzz -truetype"
+}</code></pre>
+
+<h3>genpack.json5 Configuration Example</h3>
+
+<p>Minimal USE flag settings when using devlauncher with the <code>paravirt</code> profile:</p>
+
+<pre><code class="language-json5">{
+    profile: "paravirt",
+    packages: ["genpack/devlauncher"],
+    use: {
+        "gui-libs/gtk": "wayland",
+        "x11-libs/gtk+": "wayland",
+        "media-libs/mesa": "vulkan wayland",
+        "x11-libs/cairo": "X",
+        "media-libs/libglvnd": "X",
+        "media-libs/freetype": "harfbuzz",
+        "app-crypt/gcr": "gtk",
+        "app-text/poppler": "cairo"
+    },
+    circulardep_breaker: {
+        packages: ["media-libs/freetype", "media-libs/harfbuzz"],
+        use: "-harfbuzz -truetype"
+    },
+    license: {
+        "www-client/google-chrome": "google-chrome",
+        "dev-util/claude-code": "all-rights-reserved",
+        "app-editors/vscode": "Microsoft-vscode"
+    }
+}</code></pre>
+
+<h3>Relationship with weston Profile</h3>
+
+<p>The <code>weston</code> profile globally sets <code>USE="wayland -X"</code> in <code>make.defaults</code> and covers most of the above USE flags in <code>package.use</code>. However, the <code>weston/paravirt</code> profile assumes a full desktop environment including the Weston compositor, which is excessive when only using remote display via waypipe. Individually specifying the required USE flags on the <code>paravirt</code> profile results in lighter images.</p>
+
+<section class="source-references">
+<h2>Source References</h2>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/main/genpack/devlauncher">genpack/devlauncher ebuild</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/blob/main/profiles/genpack/weston/package.use">profiles/genpack/weston/package.use</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/blob/main/profiles/genpack/paravirt/package.use">profiles/genpack/paravirt/package.use</a></li>
+</ul>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.en.html">genpack — Gentoo-based Immutable System Image Build Toolchain</a></li>
+<li><a href="json5.en.html">genpack.json5 Specification Reference</a></li>
+<li><a href="subdirectories.en.html">Artifact Directory Structure</a></li>
+<li><a href="profiles.en.html">genpack-overlay Profile Reference</a></li>
+<li><a href="cli.en.html">genpack CLI Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+<li><a href="artifact-stub.en.html">stub — Multi-distribution Installer and kexec Bootloader for VMs</a></li>
+<li><a href="uvp.en.html">Discussion on the Uniqueness of genpack's Value Proposition</a></li>
+</ul>
+</nav>
+
+</body>
+</html>
