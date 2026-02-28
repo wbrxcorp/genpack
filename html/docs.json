@@ -108,6 +108,18 @@
     }
   },
   {
+    "id": "boot-sequence",
+    "slug": "boot-sequence",
+    "title": {
+      "ja": "genpack イメージの起動機序",
+      "en": "Boot Sequence of genpack Images"
+    },
+    "description": {
+      "ja": "ディスクインストール方式とパラバーチャル方式（vm コマンド）の両方について起動シーケンスを詳細に解説",
+      "en": "Detailed boot sequence walkthrough for both disk install (system.img) and paravirtual (vm command) methods"
+    }
+  },
+  {
     "id": "uvp",
     "slug": "uvp",
     "title": {

@@ -1,6 +1,22 @@
 [
   {
     "date": "2026-02-28",
+    "slugs": ["boot-sequence"],
+    "description": {
+      "ja": "起動機序ドキュメントに設計意図の脚注を追加",
+      "en": "Add design rationale footnotes to boot sequence documentation"
+    }
+  },
+  {
+    "date": "2026-02-28",
+    "slugs": ["boot-sequence"],
+    "description": {
+      "ja": "genpack イメージの起動機序ドキュメントを追加",
+      "en": "Add boot sequence documentation for genpack images"
+    }
+  },
+  {
+    "date": "2026-02-28",
     "slugs": ["cli", "index"],
     "description": {
       "ja": "genpack bash の非対話モードサポートを反映",

@@ -406,6 +406,24 @@ nav.doc-nav li {
   font-size: 1.2em;
 }
 
+/* --- Footnotes --- */
+
+.footnotes {
+  margin-top: 2.5em;
+  padding-top: 1em;
+  border-top: 1px solid var(--border);
+  font-size: 0.88em;
+  color: var(--fg-secondary);
+}
+
+.footnotes ol {
+  padding-left: 1.5em;
+}
+
+.footnotes li {
+  margin-bottom: 0.5em;
+}
+
 /* --- Last updated / Update history --- */
 
 .last-updated {

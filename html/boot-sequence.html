@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack イメージの起動機序</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack イメージの起動機序" />
+<meta property="og:description" content="ディスクインストール方式とパラバーチャル方式（vm コマンド）の両方について起動シーケンスを詳細に解説" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/boot-sequence.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack イメージの起動機序" />
+<meta name="twitter:description" content="ディスクインストール方式とパラバーチャル方式（vm コマンド）の両方について起動シーケンスを詳細に解説" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="boot-sequence.en.html">English version</a></p>
+
+<p class="last-updated">
+最終更新: <time>2026-02-28</time>
+</p>
+
+<!-- content:begin -->
+<h1>genpack イメージの起動機序</h1>
+
+<h2>概要</h2>
+
+<p>genpack で生成された SquashFS イメージは、ディスクにインストールされた実機環境と、<code>vm</code> コマンドによる QEMU/KVM 準仮想化環境の 2 つの方法で起動できます。いずれの場合も共通の initramfs（dracut-genpack）が overlayfs ルートを構成し、genpack-init が system.ini に基づいて初期設定を行った後に systemd へ制御を渡す、という流れは同じです。</p>
+
+<p>本ドキュメントでは両方式の起動シーケンスを詳細に解説します。</p>
+
+<h2>system.img 方式（ディスクインストール）</h2>
+
+<h3>ディスクレイアウト</h3>
+
+<p><code>genpack-install</code> でディスクにインストールすると、以下のパーティション構成が作られます。</p>
+
+<table>
+<thead><tr><th>パーティション</th><th>ファイルシステム</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td>1: ブートパーティション</td><td>FAT32</td><td>EFI ブートローダー、カーネル、initramfs、system.img（4GiB 未満の場合）、system.ini</td></tr>
+<tr><td>2: データパーティション</td><td>Btrfs</td><td>overlayfs upper 層、system（4GiB 以上の場合）</td></tr>
+</tbody>
+</table>
+
+<p>ブートパーティションのサイズはイメージサイズから自動計算されます。<code>--superfloppy</code> オプションを指定すると、パーティションテーブルを作成せずディスク全体を FAT32 として使用します（データパーティションなし）。</p>
+
+<p>MBR と GPT はディスクサイズに応じて自動選択されます（2TiB 以下かつ 512 バイトセクタなら MBR、それ以外は GPT）。</p>
+
+<h3>起動シーケンス</h3>
+
+<div class="boot-flow">
+<span class="stage">UEFI/BIOS</span>
+<span class="arrow">→</span>
+<span class="stage">GRUB</span>
+<span class="arrow">→</span>
+<span class="stage">Linux カーネル</span>
+<span class="arrow">→</span>
+<span class="stage">initramfs (dracut-genpack)</span>
+<span class="arrow">→</span>
+<span class="stage">overlayfs ルート構成</span>
+<span class="arrow">→</span>
+<span class="stage">genpack-init (PID 1)</span>
+<span class="arrow">→</span>
+<span class="stage">Python プラグイン</span>
+<span class="arrow">→</span>
+<span class="stage">exec /sbin/init (systemd)</span>
+</div>
+
+<p>カーネルコマンドラインには <code>root=systemimg:&lt;UUID&gt;</code> または <code>root=systemimg:auto</code> が指定されます。</p>
+
+<h3>initramfs の処理（dracut-genpack）</h3>
+
+<p>dracut-genpack は 2 つのフックで構成されます。</p>
+
+<p><strong>cmdline フック（check-systemimg-root.sh）:</strong></p>
+
+<p>カーネルコマンドラインの <code>root=</code> パラメータを確認します。<code>root=systemimg:...</code> 形式であれば、genpack のブートシーケンスを開始します。</p>
+
+<p><strong>mount フック（mount-genpack.sh）:</strong></p>
+
+<div class="flow-diagram">
+<ol>
+<li>
+<span class="step-title">ブートパーティションの検出とマウント</span>
+<ul>
+<li><code>root=systemimg:&lt;UUID&gt;</code>: 指定 UUID のパーティションをマウント</li>
+<li><code>root=systemimg:auto</code>: 全 FAT パーティションを走査し <code>system.img</code> を含むものを検出</li>
+<li>FAT の場合は <code>fsck.fat -aw</code> で自動修復後にマウント</li>
+<li>マウントポイント: <code>/run/initramfs/boot</code></li>
+</ul>
+</li>
+<li>
+<span class="step-title">データパーティションの検出とマウント</span>
+<ul>
+<li>ブートパーティションの UUID を基にラベル <code>data-&lt;UUID&gt;</code> で検索</li>
+<li>フォールバック: <code>d-&lt;UUID&gt;</code>, <code>wbdata-&lt;UUID&gt;</code>、または次のパーティション番号 <sup><a href="#fn2" id="fnref2">[2]</a></sup></li>
+<li>見つからない場合は virtiofs (<code>fs</code> タグ) を試行 <sup><a href="#fn3" id="fnref3">[3]</a></sup></li>
+<li>それでもマウントできない場合は tmpfs にフォールバック（トランジェントモード）</li>
+<li><code>genpack.transient</code> カーネルパラメータで明示的にトランジェントモードを指定可能</li>
+<li>マウントポイント: <code>/run/initramfs/rw</code></li>
+</ul>
+</li>
+<li>
+<span class="step-title">SquashFS イメージのマウント</span>
+<ul>
+<li>ブートパーティション上の <code>/run/initramfs/boot/system.img</code> を検索</li>
+<li>見つからない場合はデータパーティション上の <code>/run/initramfs/rw/system</code> を使用</li>
+<li>read-only で <code>/run/initramfs/ro</code> にマウント</li>
+</ul>
+</li>
+<li>
+<span class="step-title">overlayfs の構成</span>
+<ul>
+<li>lowerdir: <code>/run/initramfs/ro</code>（SquashFS、読み取り専用）</li>
+<li>upperdir: <code>/run/initramfs/rw/root</code>（Btrfs または tmpfs） <sup><a href="#fn5" id="fnref5">[5]</a></sup></li>
+<li>workdir: <code>/run/initramfs/rw/work</code></li>
+<li><code>$NEWROOT</code> に overlay をマウント</li>
+<li>lower 層の <code>/usr</code> タイムスタンプを upper 層に同期 <sup><a href="#fn4" id="fnref4">[4]</a></sup></li>
+</ul>
+</li>
+<li>
+<span class="step-title">シャットダウンプログラムの配置</span>
+<ul>
+<li><code>/run/initramfs/ro/usr/libexec/genpack-shutdown</code> を <code>/run/initramfs/shutdown</code> にコピー</li>
+<li>シャットダウン時に overlayfs と SquashFS を安全にアンマウントするために使用</li>
+</ul>
+</li>
+</ol>
+</div>
+
+<h3>genpack-init</h3>
+
+<p>dracut の initramfs 処理が完了すると、<code>$NEWROOT</code> にルートが切り替わり、<code>/usr/bin/genpack-init</code> が PID 1 として起動します（<code>init=/usr/bin/genpack-init</code> が dracut モジュールにより cmdline に追加される）。</p>
+
+<p>genpack-init は C++ + pybind11 で実装されており、以下の処理を行います。</p>
+
+<ol>
+<li><code>/run/initramfs/boot/system.ini</code>（ブートパーティション経由）または <code>/run/initramfs/rw/system.ini</code>（データパーティション経由）を読み込む</li>
+<li><code>/usr/lib/genpack-init/*.py</code> 内の全 Python モジュールをファイル名順にロード</li>
+<li>各モジュールの <code>configure(ini)</code> 関数を実行（タイムゾーン、ロケール、バナー表示、マシン ID 生成など）</li>
+<li><code>exec /sbin/init</code> で systemd に制御を引き渡す</li>
+</ol>
+
+<h2>パラバーチャル方式（vm コマンド）</h2>
+
+<h3>vm コマンドの概要</h3>
+
+<p><code>vm</code> コマンドは genpack イメージを QEMU/KVM で直接起動するためのツールです。ディスクへのインストールは不要で、SquashFS ファイルをそのまま指定して起動できます。</p>
+
+<h3>起動シーケンス</h3>
+
+<div class="boot-flow">
+<span class="stage">vm run system.squashfs</span>
+<span class="arrow">→</span>
+<span class="stage">SquashFS からカーネル抽出 (memfd)</span>
+<span class="arrow">→</span>
+<span class="stage">qemu-system-&lt;arch&gt;</span>
+<span class="arrow">→</span>
+<span class="stage">initramfs (dracut-genpack)</span>
+<span class="arrow">→</span>
+<span class="stage">overlayfs ルート構成</span>
+<span class="arrow">→</span>
+<span class="stage">genpack-init (PID 1)</span>
+<span class="arrow">→</span>
+<span class="stage">exec /sbin/init (systemd)</span>
+</div>
+
+<h3>カーネルと initramfs の抽出</h3>
+
+<p>vm コマンドは squashfuse ライブラリを使用して、SquashFS イメージの <code>/boot/</code> ディレクトリからカーネルと initramfs を直接読み出します。ディスクに展開する必要はなく、<code>memfd_create</code> で作成したメモリ上のファイルディスクリプタに書き出して QEMU に渡します。</p>
+
+<p>検索順序:</p>
+<ol>
+<li><code>boot/kernel</code> または <code>boot/vmlinuz</code>（固定名）</li>
+<li><code>boot/kernel-*</code> または <code>boot/vmlinuz-*</code>（タイムスタンプが最新のもの）</li>
+</ol>
+
+<p>initramfs も同様に <code>boot/initramfs</code>, <code>boot/initramfs.img</code>, <code>boot/initrd.img</code> の順で検索されます。</p>
+
+<p>カーネルバイナリの ELF ヘッダまたは PE ヘッダからアーキテクチャ（x86_64, aarch64, riscv64 等）を自動判定し、対応する <code>qemu-system-&lt;arch&gt;</code> を起動します。</p>
+
+<h3>QEMU の起動構成</h3>
+
+<p>vm コマンドは QEMU のダイレクトカーネルブート（<code>-kernel</code>, <code>-initrd</code>, <code>-append</code>）を使用します。ブートローダーは介在しません。</p>
+
+<p><strong>カーネルコマンドライン:</strong></p>
+
+<pre><code>root=/dev/vda ro net.ifnames=0 systemd.firstboot=0 systemd.hostname=&lt;vmname&gt; console=...</code></pre>
+
+<ul>
+<li><code>root=/dev/vda</code>: SquashFS イメージが virtio-blk デバイスとして提供される</li>
+<li>virtiofs モードの場合は <code>root=fs rootfstype=virtiofs rw</code></li>
+</ul>
+
+<p><strong>ディスクの提供:</strong></p>
+
+<table>
+<thead><tr><th>virtio デバイス</th><th>シリアル</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td>vda</td><td>system</td><td>SquashFS イメージ（読み取り専用）</td></tr>
+<tr><td>vdb</td><td>data</td><td>データディスク（あれば）</td></tr>
+<tr><td>vdc</td><td>swap</td><td>スワップファイル（あれば）</td></tr>
+</tbody>
+</table>
+
+<p>SquashFS イメージは <code>virtio-blk-pci</code> デバイスとして read-only で接続されます。initramfs の <code>mount-genpack.sh</code> は <code>root=block:*</code> ではなくカーネルコマンドラインの <code>root=/dev/vda</code> を参照し、<code>/dev/vda</code> を直接 SquashFS として <code>/run/initramfs/ro</code> にマウントします。</p>
+
+<p><strong>virtiofs モード:</strong></p>
+
+<p>vm コマンドは virtiofs もサポートしています。virtiofsd を起動してホストのディレクトリをゲストに共有し、overlayfs の upper 層として使用できます。virtiofs 使用時、initramfs は <code>root=fs rootfstype=virtiofs rw</code> に基づいて virtiofs をルートとしてマウントします。</p>
+
+<h3>vm サービスモード</h3>
+
+<p><code>vm</code> コマンドには <code>vm.ini</code> ファイルを読み取るサービスモードがあります。各 VM のディレクトリ構成は以下の通りです。</p>
+
+<div class="tree-diagram">
+<ul>
+<li><span class="label">/var/vm/&lt;vmname&gt;/</span>
+<ul>
+<li><span class="label">vm.ini</span> <span class="desc">— VM 設定（メモリ、CPU、ネットワーク等）</span></li>
+<li><span class="label">system</span> <span class="desc">— SquashFS イメージ（シンボリックリンク可）</span></li>
+<li><span class="label">data</span> <span class="desc">— データディスク（オプション）</span></li>
+<li><span class="label">swapfile</span> <span class="desc">— スワップ（オプション）</span></li>
+<li><span class="label">fs/</span> <span class="desc">— virtiofs 共有ディレクトリ</span></li>
+<li><span class="label">docker</span> <span class="desc">— Docker 用ディスク（オプション、serial=docker）</span></li>
+<li><span class="label">mysql</span> <span class="desc">— MySQL 用ディスク（オプション、serial=mysql）</span></li>
+</ul>
+</li>
+</ul>
+</div>
+
+<p><code>vm.ini</code> の <code>type=genpack</code>（デフォルト）でダイレクトカーネルブートが使用されます。</p>
+
+<h3>system.img 方式との共通点と相違点</h3>
+
+<table>
+<thead><tr><th>項目</th><th>system.img 方式</th><th>パラバーチャル方式</th></tr></thead>
+<tbody>
+<tr><td>ブートローダー</td><td>GRUB (EFI/BIOS)</td><td>なし（ダイレクトカーネルブート）</td></tr>
+<tr><td>カーネル格納場所</td><td>ブートパーティション上のファイル</td><td>SquashFS 内から memfd に抽出</td></tr>
+<tr><td>root= パラメータ</td><td><code>systemimg:&lt;UUID&gt;</code> or <code>systemimg:auto</code></td><td><code>/dev/vda</code></td></tr>
+<tr><td>SquashFS の提供</td><td>ブート/データパーティション上のファイル</td><td>virtio-blk デバイス</td></tr>
+<tr><td>データ永続化</td><td>Btrfs パーティション</td><td>data ディスクファイルまたは virtiofs</td></tr>
+<tr><td>トランジェントモード</td><td><code>genpack.transient</code> カーネルパラメータ</td><td>data ディスクを指定しなければ自動</td></tr>
+<tr><td>system.ini</td><td>FAT32 パーティション上</td><td>virtiofs 経由または fw_cfg</td></tr>
+<tr><td>initramfs の動作</td><td>共通（dracut-genpack）</td><td>共通（dracut-genpack）</td></tr>
+<tr><td>genpack-init の動作</td><td>共通</td><td>共通</td></tr>
+</tbody>
+</table>
+
+<h2>シャットダウン</h2>
+
+<p>genpack イメージのシャットダウンは通常の systemd シャットダウンプロセスの後、dracut の initramfs に制御が戻り、<code>/run/initramfs/shutdown</code>（genpack-shutdown）が実行されます。genpack-shutdown は以下を行います。</p>
+
+<ol>
+<li><code>/oldroot</code> 以下の全マウントポイントを逆順にアンマウント</li>
+<li><code>/run/initramfs/rw</code>（データパーティション）と <code>/run/initramfs/boot</code>（ブートパーティション）を安全に移動・アンマウント</li>
+<li>ブートパーティション上の <code>boottime.txt</code> を削除 <sup><a href="#fn1" id="fnref1">[1]</a></sup></li>
+<li><code>reboot(2)</code> または <code>poweroff</code> を実行</li>
+</ol>
+
+<section class="footnotes">
+<ol>
+<li id="fn1">boottime.txt はブート時に作成されます。clean shutdown 時に削除されるため、次回ブート時にこのファイルが残存していれば前回の unclean shutdown（クラッシュや電源断）の証拠となります。 <a href="#fnref1">↩</a></li>
+<li id="fn2"><code>d-&lt;UUID&gt;</code> が現在の正式なラベルフォーマットです（Btrfs のラベル長制限のため短縮形を使用）。<code>data-&lt;UUID&gt;</code> および <code>wbdata-&lt;UUID&gt;</code> は Walbrix（genpack の前身）時代の互換性のために残されています。 <a href="#fnref2">↩</a></li>
+<li id="fn3">systemimg 方式は実機専用ではなく、vm フロントエンドを介さずに QEMU 上で直接実行される場合もあります。このフォールバックにより、baremetal プロファイルのイメージも準仮想化環境で起動可能です。baremetal プロファイルが systemimg の特化として存在するのもこの理由です。 <a href="#fnref3">↩</a></li>
+<li id="fn4">systemd は <code>/usr</code> のタイムスタンプを参照して <code>ld.so.cache</code> の再生成が必要かを判定します。overlayfs では upper 層が存在すると lower 層のタイムスタンプが隠されるため、lower 層の <code>/usr</code> タイムスタンプを明示的に upper 層に伝播させる必要があります。 <a href="#fnref4">↩</a></li>
+<li id="fn5">旧バージョンでは upperdir が <code>rw/rw/root</code> という冗長なパスでした。<code>rw/root</code> に簡略化されましたが、既存環境との互換性のため initramfs は旧パス <code>rw/rw/root</code> も引き続き認識します。 <a href="#fnref5">↩</a></li>
+</ol>
+</section>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+
+<p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
+
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-install">wbrxcorp/genpack-install @ HEAD</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay">wbrxcorp/genpack-overlay @ HEAD</a> (sys-kernel/dracut-genpack, genpack/base)</li>
+<li><a href="https://github.com/wbrxcorp/genpack-init">wbrxcorp/genpack-init @ HEAD</a></li>
+<li><a href="https://github.com/shimarin/vm">shimarin/vm @ HEAD</a></li>
+</ul>
+</section>
+<!-- content:end -->
+
+<section class="update-history">
+<h2>更新履歴</h2>
+<ul>
+<li><time>2026-02-28</time> — 起動機序ドキュメントに設計意図の脚注を追加</li>
+<li><time>2026-02-28</time> — genpack イメージの起動機序ドキュメントを追加</li>
+</ul>
+<p class="history-link"><a href="history.html">すべての更新履歴を見る</a></p>
+</section>
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="overlay-devlauncher.html">genpack/devlauncher メタパッケージ</a></li>
+<li><a href="overlay-genpack-progs.html">genpack/genpack-progs パッケージ</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての Gemini との対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>
