@@ -86,7 +86,7 @@ genpack は **lower/upper の 2 層構造** でビルドを行います。
 | `genpack lower` | Lower 層のビルド/リビルド |
 | `genpack upper` | Upper 層のビルド/リビルド |
 | `genpack pack` | SquashFS イメージの生成 |
-| `genpack bash` | Lower 層内の対話シェル |
+| `genpack bash [command...]` | Lower 層内の対話シェル / コマンド実行 |
 | `genpack archive` | 設定の tar.gz アーカイブを作成 |
 
 ### 対応アーキテクチャ
@@ -350,7 +350,7 @@ NixOS、Yocto、Buildroot、mkosi、OSTree など同様の目的を持つツー�
 
 このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:
 
-- [wbrxcorp/genpack @ b71eb6b](https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd)
+- [wbrxcorp/genpack @ 6aa1e82](https://github.com/wbrxcorp/genpack/tree/6aa1e8244e53499cacb3b15e78ba215c3a6a23a9)
 - [wbrxcorp/genpack-overlay @ 45a7e1e](https://github.com/wbrxcorp/genpack-overlay/tree/45a7e1e7440104f6592150261858c4ddd498d15b)
 - [wbrxcorp/genpack-init @ 721060c](https://github.com/wbrxcorp/genpack-init/tree/721060c832335b240e6bd6998779235e5185468a)
 - [wbrxcorp/genpack-install @ 4246185](https://github.com/wbrxcorp/genpack-install/tree/4246185bb8c5b32f809fa482a28aa5c39caf5b3e)

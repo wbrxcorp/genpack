@@ -165,13 +165,13 @@
 
 <h3>bash</h3>
 
-<p>Lower 層の対話的デバッグシェルを開きます。</p>
+<p>Lower 層で対話シェルを開くか、指定したコマンドを実行します。</p>
 
-<pre><code>genpack bash</code></pre>
+<pre><code>genpack bash [command...]</code></pre>
 
-<p>systemd-nspawn コンテナ内で bash シェルが起動し、Lower 層のファイルシステムを直接操作・確認できます。パッケージのインストール状態の確認やデバッグに使用します。</p>
+<p>コマンドを指定しない場合、systemd-nspawn コンテナ内で bash シェルが起動し、Lower 層のファイルシステムを直接操作・確認できます。パッケージのインストール状態の確認やデバッグに使用します。</p>
 
-<p>終了時にバイナリパッケージのメタデータが自動更新されます。</p>
+<p>コマンドを指定した場合、そのコマンドを Lower 層の nspawn コンテナ内で非対話的に実行します。コマンドが失敗した場合はエラーで終了します。</p>
 
 <h3>upper-bash</h3>
 
@@ -280,6 +280,9 @@ genpack pack
 # デバッグ (Lower 層のシェル)
 genpack bash
 
+# Lower 層内でコマンドを実行
+genpack bash emerge --info
+
 # デバッグ (Upper 層のシェル)
 genpack upper-bash
 
@@ -296,7 +299,7 @@ genpack archive</code></pre>
 <h2>ソースリファレンス</h2>
 <p>このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:</p>
 <ul>
-<li><a href="https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd">wbrxcorp/genpack @ b71eb6b</a></li>
+<li><a href="https://github.com/wbrxcorp/genpack/tree/6aa1e8244e53499cacb3b15e78ba215c3a6a23a9">wbrxcorp/genpack @ 6aa1e82</a></li>
 </ul>
 </section>
 

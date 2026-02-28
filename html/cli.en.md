@@ -129,15 +129,15 @@ Processing:
 
 ### bash
 
-Opens interactive debug shell for lower layer.
+Opens an interactive debug shell or runs a specified command in the lower layer.
 
 ```bash
-genpack bash
+genpack bash [command...]
 ```
 
-Launches a bash shell inside a systemd-nspawn container, allowing direct manipulation and inspection of lower layer filesystem. Used for verifying package installation status and debugging.
+When no command is given, launches a bash shell inside a systemd-nspawn container, allowing direct manipulation and inspection of lower layer filesystem. Used for verifying package installation status and debugging.
 
-Binary package metadata is automatically updated on exit.
+When a command is given, it is executed non-interactively inside the lower layer's nspawn container. The process exits with an error if the command fails.
 
 ### upper-bash
 
@@ -233,6 +233,9 @@ genpack pack
 # Debug (lower layer shell)
 genpack bash
 
+# Run a command in the lower layer
+genpack bash emerge --info
+
 # Debug (upper layer shell)
 genpack upper-bash
 
@@ -250,4 +253,4 @@ genpack archive
 
 This document was written based on the following repository snapshots:
 
-- [wbrxcorp/genpack @ b71eb6b](https://github.com/wbrxcorp/genpack/tree/b71eb6b025f7cd1ec5ae9220a21f2229c274c7bd)
+- [wbrxcorp/genpack @ 6aa1e82](https://github.com/wbrxcorp/genpack/tree/6aa1e8244e53499cacb3b15e78ba215c3a6a23a9)
