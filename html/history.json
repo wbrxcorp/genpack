@@ -3,6 +3,14 @@
     "date": "2026-02-28",
     "slugs": ["boot-sequence"],
     "description": {
+      "ja": "grub.cfg 処理フローの設計意図を脚注に追加",
+      "en": "Add design rationale footnotes for grub.cfg processing flow"
+    }
+  },
+  {
+    "date": "2026-02-28",
+    "slugs": ["boot-sequence"],
+    "description": {
       "ja": "ブートローダーと grub.cfg の処理フローを追加",
       "en": "Add bootloader and grub.cfg processing flow sections"
     }

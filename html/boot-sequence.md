@@ -51,7 +51,7 @@ genpack-install は各アーキテクチャ向けの GRUB ブートローダー�
 
 **BIOS ブートローダー:**
 
-`boot.img`（MBR ステージ 1）と `core.img`（`grub-mkimage` で生成）の組み合わせです。`core.img` にはプレフィックス `(,msdos1)/boot/grub` がハードコードされており、ブートパーティションの `/boot/grub/grub.cfg` を読み込みます。BIOS の場合、grub.cfg はバイナリに内蔵されず、`genpack-install` がディスクインストール時にブートパーティションへ配置します。
+`boot.img`（MBR ステージ 1）と `core.img`（`grub-mkimage` で生成）の組み合わせです。`core.img` にはプレフィックス `(,msdos1)/boot/grub` がハードコードされており [^10]、ブートパーティションの `/boot/grub/grub.cfg` を読み込みます。BIOS の場合、grub.cfg はバイナリに内蔵されず、`genpack-install` がディスクインストール時にブートパーティションへ配置します。
 
 ### grub.cfg の処理フロー
 
@@ -74,17 +74,17 @@ GRUB 変数 `$cmdpath`（ブートローダーの起動元パス）からブー�
 
 **4. SquashFS のマウントとカーネル検出**
 
-`loopback` コマンドで SquashFS をループバックマウントし、`set root=loop` でルートを切り替えます。イメージ内に `/boot/grub/grub.cfg` が存在する場合は `configfile` で読み込みを委譲します（イメージ側でブート構成をオーバーライド可能）。
+`loopback` コマンドで SquashFS をループバックマウントし、`set root=loop` でルートを切り替えます。イメージ内に `/boot/grub/grub.cfg` が存在する場合は `configfile` で読み込みを委譲します [^7]。
 
 存在しない場合は以下の処理を続行します。
 
 **5. タイムアウトの決定**
 
-ブートパーティション上に `boottime.txt` が残存している場合（前回 unclean shutdown の証拠 [^1]）はタイムアウトを 10 秒に設定し、通常時は 1 秒に設定します。
+ブートパーティション上に `boottime.txt` が残存している場合（前回 unclean shutdown の証拠 [^1]）はタイムアウトを 10 秒に設定し [^6]、通常時は 1 秒に設定します。
 
 **6. カスタム設定の読み込み**
 
-ブートパーティション上に `system.cfg` が存在すれば `source` で読み込みます。このファイルで `LINUX_ARGS` 変数を設定することでカーネルコマンドラインをカスタマイズできます。
+ブートパーティション上に `system.cfg` が存在すれば `source` で読み込みます [^8]。このファイルで `LINUX_ARGS` 変数を設定することでカーネルコマンドラインをカスタマイズできます。
 
 **7. カーネルコマンドラインの構成**
 
@@ -99,6 +99,8 @@ GRUB 変数 `$cmdpath`（ブートローダーの起動元パス）からブー�
 | Transient mode | 上記に `genpack.transient=1` を追加 |
 
 カーネルと initramfs は SquashFS 内の `/boot/kernel` と `/boot/initramfs` が使用されます（ループバックマウント済みのため、GRUB は SquashFS 内のファイルを直接参照できます）。MemTest86 が利用可能な場合は追加のメニューエントリが表示されます。
+
+上記の処理でシステムイメージが見つからなかった場合、データパーティション上の grub.cfg やカーネルでの直接起動を試みるフォールバックパスも存在します [^9]。
 
 ### initramfs の処理（dracut-genpack）
 
@@ -263,6 +265,16 @@ genpack イメージのシャットダウンは通常の systemd シャットダ
 [^4]: systemd は `/usr` のタイムスタンプを参照して `ld.so.cache` の再生成が必要かを判定します。overlayfs では upper 層が存在すると lower 層のタイムスタンプが隠されるため、lower 層の `/usr` タイムスタンプを明示的に upper 層に伝播させる必要があります。
 
 [^5]: 旧バージョンでは upperdir が `rw/rw/root` という冗長なパスでした。`rw/root` に簡略化されましたが、既存環境との互換性のため initramfs は旧パス `rw/rw/root` も引き続き認識します。
+
+[^6]: 前回の unclean shutdown 後にタイムアウトを延長することで、オペレータがトランジェントモードや MemTest86 を選択する猶予を確保します。正常シャットダウン時には boottime.txt が削除されるため、通常起動では 1 秒の短いタイムアウトで自動ブートします。
+
+[^7]: イメージ固有のカーネルパラメータが必要な場合やスプラッシュ画面を表示したい場合など、イメージ側でブート構成をカスタマイズするための仕組みです。`BOOT_PARTITION` と `BOOT_PARTITION_UUID` がエクスポートされるため、委譲先の grub.cfg からもブートパーティション情報を参照できます。
+
+[^8]: GRUB は INI ファイルフォーマットをネイティブに解析できないため、ブートローダー段階で必要な設定は GRUB スクリプト形式の system.cfg に、genpack-init 段階で必要なシステム設定は INI 形式の system.ini にという 2 層構造になっています。
+
+[^9]: genpack 以外のシステムとの共存を想定した隠し機能です。データパーティション上に独立した grub.cfg やカーネル/initramfs があれば、そちらからの起動を試みます。常に成功する保証はありません。
+
+[^10]: BIOS ブートは MBR パーティション構成が前提です。GPT ディスクの場合は EFI ブートが使用されます。
 
 ## ソースリファレンス
 

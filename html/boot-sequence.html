@@ -94,7 +94,7 @@
 
 <p><strong>BIOS ブートローダー:</strong></p>
 
-<p><code>boot.img</code>（MBR ステージ 1）と <code>core.img</code>（<code>grub-mkimage</code> で生成）の組み合わせです。<code>core.img</code> にはプレフィックス <code>(,msdos1)/boot/grub</code> がハードコードされており、ブートパーティションの <code>/boot/grub/grub.cfg</code> を読み込みます。BIOS の場合、grub.cfg はバイナリに内蔵されず、<code>genpack-install</code> がディスクインストール時にブートパーティションへ配置します。</p>
+<p><code>boot.img</code>（MBR ステージ 1）と <code>core.img</code>（<code>grub-mkimage</code> で生成）の組み合わせです。<code>core.img</code> にはプレフィックス <code>(,msdos1)/boot/grub</code> がハードコードされており <sup><a href="#fn10" id="fnref10">[10]</a></sup>、ブートパーティションの <code>/boot/grub/grub.cfg</code> を読み込みます。BIOS の場合、grub.cfg はバイナリに内蔵されず、<code>genpack-install</code> がディスクインストール時にブートパーティションへ配置します。</p>
 
 <h3>grub.cfg の処理フロー</h3>
 
@@ -127,21 +127,21 @@
 <span class="step-title">SquashFS のマウントとカーネル検出</span>
 <ul>
 <li><code>loopback</code> コマンドで SquashFS をループバックマウントし <code>set root=loop</code> でルートを切り替え</li>
-<li>イメージ内に <code>/boot/grub/grub.cfg</code> があれば <code>configfile</code> で委譲（イメージ側でブート構成をオーバーライド可能）</li>
+<li>イメージ内に <code>/boot/grub/grub.cfg</code> があれば <code>configfile</code> で委譲 <sup><a href="#fn7" id="fnref7">[7]</a></sup></li>
 <li>存在しない場合は以下の処理を続行</li>
 </ul>
 </li>
 <li>
 <span class="step-title">タイムアウトの決定</span>
 <ul>
-<li><code>boottime.txt</code> が残存（前回 unclean shutdown の証拠 <sup><a href="#fn1">[1]</a></sup>）→ 10 秒</li>
+<li><code>boottime.txt</code> が残存（前回 unclean shutdown の証拠 <sup><a href="#fn1">[1]</a></sup>）→ 10 秒 <sup><a href="#fn6" id="fnref6">[6]</a></sup></li>
 <li>通常 → 1 秒</li>
 </ul>
 </li>
 <li>
 <span class="step-title">カスタム設定の読み込み</span>
 <ul>
-<li>ブートパーティション上に <code>system.cfg</code> があれば <code>source</code> で読み込み</li>
+<li>ブートパーティション上に <code>system.cfg</code> があれば <code>source</code> で読み込み <sup><a href="#fn8" id="fnref8">[8]</a></sup></li>
 <li><code>LINUX_ARGS</code> 変数でカーネルコマンドラインをカスタマイズ可能</li>
 </ul>
 </li>
@@ -163,6 +163,8 @@
 </li>
 </ol>
 </div>
+
+<p>上記の処理でシステムイメージが見つからなかった場合、データパーティション上の grub.cfg やカーネルでの直接起動を試みるフォールバックパスも存在します <sup><a href="#fn9" id="fnref9">[9]</a></sup>。</p>
 
 <h3>initramfs の処理（dracut-genpack）</h3>
 
@@ -362,6 +364,11 @@
 <li id="fn3">systemimg 方式は実機専用ではなく、vm フロントエンドを介さずに QEMU 上で直接実行される場合もあります。このフォールバックにより、baremetal プロファイルのイメージも準仮想化環境で起動可能です。baremetal プロファイルが systemimg の特化として存在するのもこの理由です。 <a href="#fnref3">↩</a></li>
 <li id="fn4">systemd は <code>/usr</code> のタイムスタンプを参照して <code>ld.so.cache</code> の再生成が必要かを判定します。overlayfs では upper 層が存在すると lower 層のタイムスタンプが隠されるため、lower 層の <code>/usr</code> タイムスタンプを明示的に upper 層に伝播させる必要があります。 <a href="#fnref4">↩</a></li>
 <li id="fn5">旧バージョンでは upperdir が <code>rw/rw/root</code> という冗長なパスでした。<code>rw/root</code> に簡略化されましたが、既存環境との互換性のため initramfs は旧パス <code>rw/rw/root</code> も引き続き認識します。 <a href="#fnref5">↩</a></li>
+<li id="fn6">前回の unclean shutdown 後にタイムアウトを延長することで、オペレータがトランジェントモードや MemTest86 を選択する猶予を確保します。正常シャットダウン時には boottime.txt が削除されるため、通常起動では 1 秒の短いタイムアウトで自動ブートします。 <a href="#fnref6">↩</a></li>
+<li id="fn7">イメージ固有のカーネルパラメータが必要な場合やスプラッシュ画面を表示したい場合など、イメージ側でブート構成をカスタマイズするための仕組みです。<code>BOOT_PARTITION</code> と <code>BOOT_PARTITION_UUID</code> がエクスポートされるため、委譲先の grub.cfg からもブートパーティション情報を参照できます。 <a href="#fnref7">↩</a></li>
+<li id="fn8">GRUB は INI ファイルフォーマットをネイティブに解析できないため、ブートローダー段階で必要な設定は GRUB スクリプト形式の system.cfg に、genpack-init 段階で必要なシステム設定は INI 形式の system.ini にという 2 層構造になっています。 <a href="#fnref8">↩</a></li>
+<li id="fn9">genpack 以外のシステムとの共存を想定した隠し機能です。データパーティション上に独立した grub.cfg やカーネル/initramfs があれば、そちらからの起動を試みます。常に成功する保証はありません。 <a href="#fnref9">↩</a></li>
+<li id="fn10">BIOS ブートは MBR パーティション構成が前提です。GPT ディスクの場合は EFI ブートが使用されます。 <a href="#fnref10">↩</a></li>
 </ol>
 </section>
 
@@ -382,6 +389,7 @@
 <section class="update-history">
 <h2>更新履歴</h2>
 <ul>
+<li><time>2026-02-28</time> — grub.cfg 処理フローの設計意図を脚注に追加</li>
 <li><time>2026-02-28</time> — ブートローダーと grub.cfg の処理フローを追加</li>
 <li><time>2026-02-28</time> — 起動機序ドキュメントに設計意図の脚注を追加</li>
 <li><time>2026-02-28</time> — genpack イメージの起動機序ドキュメントを追加</li>
