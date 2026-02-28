@@ -1,0 +1,34 @@
+[
+  {
+    "date": "2026-02-28",
+    "slugs": ["cli", "index"],
+    "description": {
+      "ja": "genpack bash の非対話モードサポートを反映",
+      "en": "Reflect non-interactive genpack bash support"
+    }
+  },
+  {
+    "date": "2026-02-28",
+    "slugs": ["overlay-genpack-progs"],
+    "description": {
+      "ja": "genpack/genpack-progs パッケージのドキュメントを追加",
+      "en": "Add genpack/genpack-progs package documentation"
+    }
+  },
+  {
+    "date": "2026-02-25",
+    "slugs": ["overlay-devlauncher"],
+    "description": {
+      "ja": "genpack/devlauncher メタパッケージのドキュメントを追加",
+      "en": "Add genpack/devlauncher metapackage documentation"
+    }
+  },
+  {
+    "date": "2026-02-23",
+    "slugs": ["index", "json5", "subdirectories", "profiles", "cli", "cli-install", "artifact-stub", "uvp"],
+    "description": {
+      "ja": "genpack ドキュメントサイトを公開",
+      "en": "Launch genpack documentation site"
+    }
+  }
+]

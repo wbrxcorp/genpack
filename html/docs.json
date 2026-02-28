@@ -9,8 +9,7 @@
     "description": {
       "ja": "Gentoo Linux をベースとして用途特化型の不変システムイメージを宣言的に生成・配布・起動するための一連のツール群",
       "en": "A suite of tools for declaratively building, distributing, and booting purpose-built immutable system images based on Gentoo Linux."
-    },
-    "lastUpdated": "2026-02-28"
+    }
   },
   {
     "id": "json5",
@@ -22,8 +21,7 @@
     "description": {
       "ja": "genpack でビルドするシステムイメージの宣言的な定義ファイル genpack.json5 の全フィールドを網羅した仕様リファレンス",
       "en": "Complete specification reference for genpack.json5, the declarative definition file for system images built with genpack"
-    },
-    "lastUpdated": "2026-02-23"
+    }
   },
   {
     "id": "subdirectories",
@@ -35,8 +33,7 @@
     "description": {
       "ja": "genpack アーティファクトを構成するサブディレクトリ（files/, kernel/, savedconfig/, patches/, env/, overlay/）の役割とビルドフェーズとの対応を解説",
       "en": "Roles and build-phase mapping of genpack artifact subdirectories: files/, kernel/, savedconfig/, patches/, env/, and overlay/"
-    },
-    "lastUpdated": "2026-02-23"
+    }
   },
   {
     "id": "profiles",
@@ -48,8 +45,7 @@
     "description": {
       "ja": "genpack イメージのベース環境を定義するプロファイル階層とメタパッケージの仕様",
       "en": "Profile hierarchy and metapackages that define base environments for genpack images"
-    },
-    "lastUpdated": "2026-02-23"
+    }
   },
   {
     "id": "cli",
@@ -61,8 +57,7 @@
     "description": {
       "ja": "genpack コマンドのサブコマンドとオプションの一覧",
       "en": "Complete reference of genpack subcommands and options"
-    },
-    "lastUpdated": "2026-02-28"
+    }
   },
   {
     "id": "cli-install",
@@ -74,8 +69,7 @@
     "description": {
       "ja": "genpack-install コマンドのオプションと動作モードの一覧",
       "en": "Complete reference of genpack-install options and operation modes"
-    },
-    "lastUpdated": "2026-02-23"
+    }
   },
   {
     "id": "overlay-devlauncher",
@@ -87,8 +81,7 @@
     "description": {
       "ja": "Wayland環境でのGUI開発作業に必要なツール一式をまとめたメタパッケージの解説",
       "en": "A metapackage bundling tools for GUI development in a Wayland environment"
-    },
-    "lastUpdated": "2026-02-25"
+    }
   },
   {
     "id": "overlay-genpack-progs",
@@ -100,8 +93,7 @@
     "description": {
       "ja": "genpack イメージビルドで使用されるサポートツール群の解説",
       "en": "Support tools used during the genpack image build process"
-    },
-    "lastUpdated": "2026-02-28"
+    }
   },
   {
     "id": "artifact-stub",
@@ -113,8 +105,7 @@
     "description": {
       "ja": "genpack ツールチェーンで構築される、他の Linux ディストリビューションを QEMU/KVM 仮想マシン上にインストールするための使い捨てブート環境",
       "en": "A disposable boot environment for installing other Linux distributions on QEMU/KVM virtual machines, built with the genpack toolchain."
-    },
-    "lastUpdated": "2026-02-23"
+    }
   },
   {
     "id": "uvp",
@@ -126,7 +117,6 @@
     "description": {
       "ja": "同様の目的を持つ既存ツールとの比較から、genpack の目指すところについて Gemini に聞いた",
       "en": "A discussion with Gemini about what genpack aims to achieve and how it differentiates from existing tools."
-    },
-    "lastUpdated": "2026-02-23"
+    }
   }
 ]

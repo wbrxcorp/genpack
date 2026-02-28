@@ -20,55 +20,39 @@
 <body class="{{ lang }}">
 {% if lang == "ja" %}
 
-<p class="lang-link"><a href="{{ slug }}.en.html">English version</a></p>
+<p class="lang-link"><a href="history.en.html">English version</a></p>
 {% endif %}
 
-{% if last_updated %}
-<p class="last-updated">
-{% if lang == "ja" %}
-最終更新: <time>{{ last_updated }}</time>
-{% else %}
-Last updated: <time>{{ last_updated }}</time>
-{% endif %}
-</p>
-{% endif %}
+<h1>{{ title }}</h1>
 
-{{ content }}
-
-{% if history_entries %}
-<section class="update-history">
-{% if lang == "ja" %}
-<h2>更新履歴</h2>
-{% else %}
-<h2>Update History</h2>
-{% endif %}
+{% for date, entries in grouped_history %}
+<h2><time>{{ date }}</time></h2>
 <ul>
-{% for entry in history_entries %}
+{% for entry in entries %}
+<li>
 {% if lang == "ja" %}
-<li><time>{{ entry.date }}</time> — {{ entry.description.ja }}</li>
+{{ entry.description.ja }}
 {% else %}
-<li><time>{{ entry.date }}</time> — {{ entry.description.en }}</li>
+{{ entry.description.en }}
 {% endif %}
+{% if entry.slugs %}
+<span class="history-docs">
+({% for slug in entry.slugs %}{% if slug in docs_by_slug %}<a href="{{ slug }}{% if lang == 'en' %}.en{% endif %}.html">{{ docs_by_slug[slug].title[lang] }}</a>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %})
+</span>
+{% endif %}
+</li>
 {% endfor %}
 </ul>
-{% if lang == "ja" %}
-<p class="history-link"><a href="history.html">すべての更新履歴を見る</a></p>
-{% else %}
-<p class="history-link"><a href="history.en.html">See all update history</a></p>
-{% endif %}
-</section>
-{% endif %}
+{% endfor %}
 
 <nav class="doc-nav">
 <h2>Other Documents</h2>
 <ul>
 {% for doc in docs %}
-{% if doc.id != current_id %}
 {% if lang == "ja" %}
 <li><a href="{{ doc.slug }}.html">{{ doc.title.ja }}</a></li>
 {% else %}
 <li><a href="{{ doc.slug }}.en.html">{{ doc.title.en }}</a></li>
-{% endif %}
 {% endif %}
 {% endfor %}
 </ul>

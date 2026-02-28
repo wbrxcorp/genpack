@@ -21,14 +21,18 @@ HTMLは `generate-page.py` + Jinja2テンプレート (`templates/page.html.j2`)
 
 | ファイル | 役割 |
 |---|---|
-| `docs.json` | 全ページのメタデータ（slug, タイトル, 説明文, 更新日） |
-| `templates/page.html.j2` | 共通HTMLテンプレート。`<head>` メタタグ、言語リンク、ナビゲーションを生成 |
+| `docs.json` | 全ページのメタデータ（slug, タイトル, 説明文） |
+| `history.json` | 更新履歴データ（日付、対象slug、日英の説明文） |
+| `templates/page.html.j2` | 共通HTMLテンプレート。`<head>` メタタグ、言語リンク、更新履歴、ナビゲーションを生成 |
+| `templates/history.html.j2` | 全更新履歴一覧ページのテンプレート |
 | `generate-page.py` | 既存HTMLから本文を抽出し、テンプレートで `<head>` とナビゲーションを再生成するスクリプト |
 
 ### テンプレートが自動生成する部分
 
 - `<head>` 内のメタタグ一式（OGP, Twitter Card, favicon, CSS）
 - 日本語版の英語版リンク (`<p class="lang-link">`)
+- 最終更新日 (`<p class="last-updated">`) — `history.json` から該当ページの最新日付を導出
+- 更新履歴セクション (`<section class="update-history">`) — `history.json` から該当ページの履歴を抽出して表示
 - ページ末尾のナビゲーション (`<nav class="doc-nav">`)
 
 ### 本文のマーカーコメント
@@ -84,3 +88,22 @@ python generate-page.py --print-missing
 #### docs.json のタイトルや説明文を変更した場合
 
 `python generate-page.py` を実行すれば全ページの `<head>` メタタグとナビゲーションに反映される。
+
+#### ドキュメントを更新した場合の履歴管理
+
+1. `history.json` の**先頭**にエントリを追加する（新しい順を維持）
+2. エントリには日付、関連するスラッグのリスト、日英の説明文を記載する
+3. `python generate-page.py` を実行すれば各ページの更新履歴セクションと `history.html` / `history.en.html` に反映される
+
+`history.json` エントリの例:
+
+```json
+{
+  "date": "2026-02-28",
+  "slugs": ["cli", "index"],
+  "description": {
+    "ja": "genpack bash の非対話モードサポートを反映",
+    "en": "Reflect non-interactive genpack bash support"
+  }
+}
+```
