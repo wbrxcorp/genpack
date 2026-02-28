@@ -74,6 +74,96 @@
 
 <p>カーネルコマンドラインには <code>root=systemimg:&lt;UUID&gt;</code> または <code>root=systemimg:auto</code> が指定されます。</p>
 
+<h3>ブートローダー</h3>
+
+<p>genpack-install は各アーキテクチャ向けの GRUB ブートローダーをビルドし、SquashFS イメージの <code>/usr/lib/genpack-install/</code> に同梱します。</p>
+
+<p><strong>EFI ブートローダー:</strong></p>
+
+<p><code>grub-mkstandalone</code> を使い、grub.cfg を<strong>内蔵</strong>した単体 EFI バイナリとして生成されます。ディスク上に外部の設定ファイルを必要としません。</p>
+
+<table>
+<thead><tr><th>バイナリ</th><th>ターゲット</th></tr></thead>
+<tbody>
+<tr><td><code>bootx64.efi</code></td><td>x86_64</td></tr>
+<tr><td><code>bootia32.efi</code></td><td>i386</td></tr>
+<tr><td><code>bootaa64.efi</code></td><td>ARM64</td></tr>
+<tr><td><code>bootriscv64.efi</code></td><td>RISC-V 64</td></tr>
+</tbody>
+</table>
+
+<p><strong>BIOS ブートローダー:</strong></p>
+
+<p><code>boot.img</code>（MBR ステージ 1）と <code>core.img</code>（<code>grub-mkimage</code> で生成）の組み合わせです。<code>core.img</code> にはプレフィックス <code>(,msdos1)/boot/grub</code> がハードコードされており、ブートパーティションの <code>/boot/grub/grub.cfg</code> を読み込みます。BIOS の場合、grub.cfg はバイナリに内蔵されず、<code>genpack-install</code> がディスクインストール時にブートパーティションへ配置します。</p>
+
+<h3>grub.cfg の処理フロー</h3>
+
+<p>EFI バイナリに内蔵された（BIOS の場合はブートパーティション上の）grub.cfg は以下の処理を行います。</p>
+
+<div class="flow-diagram">
+<ol>
+<li>
+<span class="step-title">シリアルコンソールの初期化</span>
+<ul>
+<li>COM0 を 115200 baud で試行</li>
+<li>成功すればシリアルとコンソールの両方を入出力端末として設定</li>
+</ul>
+</li>
+<li>
+<span class="step-title">ブートパーティションの特定</span>
+<ul>
+<li>GRUB 変数 <code>$cmdpath</code>（ブートローダーの起動元パス）からブートパーティションを推定</li>
+<li><code>probe -u</code> で UUID を取得</li>
+</ul>
+</li>
+<li>
+<span class="step-title">システムイメージの検出</span>
+<ul>
+<li>ブートパーティション上の <code>system.img</code> を検索</li>
+<li>見つからない場合はデータパーティション上の <code>system</code> を検索（ラベル <code>data-&lt;UUID&gt;</code> → <code>d-&lt;UUID&gt;</code> → パーティション番号によるフォールバック）</li>
+</ul>
+</li>
+<li>
+<span class="step-title">SquashFS のマウントとカーネル検出</span>
+<ul>
+<li><code>loopback</code> コマンドで SquashFS をループバックマウントし <code>set root=loop</code> でルートを切り替え</li>
+<li>イメージ内に <code>/boot/grub/grub.cfg</code> があれば <code>configfile</code> で委譲（イメージ側でブート構成をオーバーライド可能）</li>
+<li>存在しない場合は以下の処理を続行</li>
+</ul>
+</li>
+<li>
+<span class="step-title">タイムアウトの決定</span>
+<ul>
+<li><code>boottime.txt</code> が残存（前回 unclean shutdown の証拠 <sup><a href="#fn1">[1]</a></sup>）→ 10 秒</li>
+<li>通常 → 1 秒</li>
+</ul>
+</li>
+<li>
+<span class="step-title">カスタム設定の読み込み</span>
+<ul>
+<li>ブートパーティション上に <code>system.cfg</code> があれば <code>source</code> で読み込み</li>
+<li><code>LINUX_ARGS</code> 変数でカーネルコマンドラインをカスタマイズ可能</li>
+</ul>
+</li>
+<li>
+<span class="step-title">カーネルコマンドラインの構成</span>
+<ul>
+<li><code>panic=30</code> をデフォルトで付与（明示的な指定がない場合）</li>
+<li>x86 系の場合、<code>console=ttyS0,115200n8r console=tty0</code> を追加（明示的な指定がない場合）</li>
+</ul>
+</li>
+<li>
+<span class="step-title">メニューエントリ</span>
+<ul>
+<li>Normal mode: <code>linux /boot/kernel root=systemimg:&lt;UUID&gt; $LINUX_ARGS systemd.firstboot=0</code></li>
+<li>Transient mode: 上記に <code>genpack.transient=1</code> を追加</li>
+<li>カーネルと initramfs は SquashFS 内の <code>/boot/kernel</code> と <code>/boot/initramfs</code> を使用（ループバックマウント済み）</li>
+<li>MemTest86 が利用可能な場合は追加のメニューエントリを表示</li>
+</ul>
+</li>
+</ol>
+</div>
+
 <h3>initramfs の処理（dracut-genpack）</h3>
 
 <p>dracut-genpack は 2 つのフックで構成されます。</p>
@@ -292,6 +382,7 @@
 <section class="update-history">
 <h2>更新履歴</h2>
 <ul>
+<li><time>2026-02-28</time> — ブートローダーと grub.cfg の処理フローを追加</li>
 <li><time>2026-02-28</time> — 起動機序ドキュメントに設計意図の脚注を追加</li>
 <li><time>2026-02-28</time> — genpack イメージの起動機序ドキュメントを追加</li>
 </ul>

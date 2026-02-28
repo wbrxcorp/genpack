@@ -34,6 +34,72 @@ UEFI/BIOS
               → exec /sbin/init (systemd)
 ```
 
+### ブートローダー
+
+genpack-install は各アーキテクチャ向けの GRUB ブートローダーをビルドし、SquashFS イメージの `/usr/lib/genpack-install/` に同梱します。
+
+**EFI ブートローダー:**
+
+`grub-mkstandalone` を使い、grub.cfg を**内蔵**した単体 EFI バイナリとして生成されます。ディスク上に外部の設定ファイルを必要としません。
+
+| バイナリ | ターゲット |
+|---|---|
+| `bootx64.efi` | x86_64 |
+| `bootia32.efi` | i386 |
+| `bootaa64.efi` | ARM64 |
+| `bootriscv64.efi` | RISC-V 64 |
+
+**BIOS ブートローダー:**
+
+`boot.img`（MBR ステージ 1）と `core.img`（`grub-mkimage` で生成）の組み合わせです。`core.img` にはプレフィックス `(,msdos1)/boot/grub` がハードコードされており、ブートパーティションの `/boot/grub/grub.cfg` を読み込みます。BIOS の場合、grub.cfg はバイナリに内蔵されず、`genpack-install` がディスクインストール時にブートパーティションへ配置します。
+
+### grub.cfg の処理フロー
+
+EFI バイナリに内蔵された（BIOS の場合はブートパーティション上の）grub.cfg は以下の処理を行います。
+
+**1. シリアルコンソールの初期化**
+
+COM0 を 115200 baud で試行し、成功すればシリアルとコンソールの両方を入出力端末として設定します。
+
+**2. ブートパーティションの特定**
+
+GRUB 変数 `$cmdpath`（ブートローダーの起動元パス）からブートパーティションを推定し、`probe -u` で UUID を取得します。
+
+**3. システムイメージの検出**
+
+以下の順序で SquashFS イメージを検索します。
+
+1. ブートパーティション上の `system.img`
+2. データパーティション上の `system`（ラベル `data-<UUID>` → `d-<UUID>` → パーティション番号によるフォールバックの順で検索）
+
+**4. SquashFS のマウントとカーネル検出**
+
+`loopback` コマンドで SquashFS をループバックマウントし、`set root=loop` でルートを切り替えます。イメージ内に `/boot/grub/grub.cfg` が存在する場合は `configfile` で読み込みを委譲します（イメージ側でブート構成をオーバーライド可能）。
+
+存在しない場合は以下の処理を続行します。
+
+**5. タイムアウトの決定**
+
+ブートパーティション上に `boottime.txt` が残存している場合（前回 unclean shutdown の証拠 [^1]）はタイムアウトを 10 秒に設定し、通常時は 1 秒に設定します。
+
+**6. カスタム設定の読み込み**
+
+ブートパーティション上に `system.cfg` が存在すれば `source` で読み込みます。このファイルで `LINUX_ARGS` 変数を設定することでカーネルコマンドラインをカスタマイズできます。
+
+**7. カーネルコマンドラインの構成**
+
+- `panic=30` をデフォルトで付与（明示的な指定がない場合）
+- x86 系の場合、`console=ttyS0,115200n8r console=tty0` を追加（明示的な指定がない場合）
+
+**8. メニューエントリ**
+
+| エントリ | カーネルコマンドライン |
+|---|---|
+| Normal mode | `linux /boot/kernel root=systemimg:<UUID> $LINUX_ARGS systemd.firstboot=0` |
+| Transient mode | 上記に `genpack.transient=1` を追加 |
+
+カーネルと initramfs は SquashFS 内の `/boot/kernel` と `/boot/initramfs` が使用されます（ループバックマウント済みのため、GRUB は SquashFS 内のファイルを直接参照できます）。MemTest86 が利用可能な場合は追加のメニューエントリが表示されます。
+
 ### initramfs の処理（dracut-genpack）
 
 dracut-genpack は 2 つのフックで構成されます。
