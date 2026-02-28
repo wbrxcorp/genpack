@@ -772,16 +772,19 @@ def lower(variant=None, devel=False):
         for file in sorted(files):
             f.write(file + '\n')
 
-def bash(variant):
-    logging.info("Running bash in the lower image for debugging.")
+def bash(variant, command=None):
     nspawn_opts = []
     if not independent_binpkgs:
         os.makedirs(binpkgs_dir, exist_ok=True)
         nspawn_opts.append("--binpkgs-dir=" + binpkgs_dir)
     if overlay_override is not None:
         nspawn_opts.append(f"--genpack-overlay-dir={overlay_override}")
-    subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "bash"])
-    subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "emaint", "binhost", "--fix"])
+    if command:
+        logging.info("Running command in the lower image.")
+        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image] + command, check=True)
+    else:
+        logging.info("Running bash in the lower image for debugging.")
+        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "bash"])
 
 def upper(variant):
     logging.info("Processing upper layer...")
@@ -1048,6 +1051,7 @@ if __name__ == "__main__":
     parser.add_argument("--devel", action="store_true", help="Generate development image, if supported by genpack.json")
     parser.add_argument("--variant", default=None, help="Variant to use from genpack.json, if supported")
     parser.add_argument("action", choices=["build", "lower", "bash", "upper", "upper-bash", "upper-clean", "pack", "archive"], nargs="?", default="build", help="Action to perform")
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="Command to run in the lower image when action is 'bash'")
     args = parser.parse_args()
     debug = args.debug
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
@@ -1097,8 +1101,11 @@ if __name__ == "__main__":
     # check if genpack-helper is properly installed
     subprocess.run(["genpack-helper", "ping"], check=True)
 
+    if args.command and args.action != "bash":
+        parser.error("extra command arguments are only supported with the 'bash' action")
+
     if args.action == "bash":
-        bash(variant)
+        bash(variant, args.command)
         exit(0)
     elif args.action == "upper-bash":
         upper_bash(variant)
