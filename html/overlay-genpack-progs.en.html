@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack/genpack-progs Package</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack/genpack-progs Package" />
+<meta property="og:description" content="Support tools used during the genpack image build process" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/overlay-genpack-progs.en.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack/genpack-progs Package" />
+<meta name="twitter:description" content="Support tools used during the genpack image build process" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="en">
+
+<!-- content:begin -->
+<h1>genpack/genpack-progs Package</h1>
+
+<h2>Overview</h2>
+
+<p><code>genpack/genpack-progs</code> is a package that bundles the support tools used during the genpack image build process. It is implicitly included in all genpack profiles and handles file collection, dependency resolution, metadata generation, and external resource downloading during image builds.</p>
+
+<p>These tools were formerly fetched from an external repository (genpack-progs), but are now inlined in the ebuild's <code>files/</code> directory.</p>
+
+<h2>Installed Commands</h2>
+
+<h3>Build Core Tools</h3>
+
+<p>Core tools that drive the image build process, called directly by genpack itself.</p>
+
+<table>
+<thead>
+<tr><th>Command</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>list-pkg-files</code></td><td>Recursively resolves Portage package dependencies and generates the file list to include in the image</td></tr>
+<tr><td><code>exec-package-scripts-and-generate-metadata</code></td><td>Executes package-specific post-install scripts and generates metadata under <code>/.genpack/</code></td></tr>
+<tr><td><code>execute-artifact-build-scripts</code></td><td>Executes artifact-specific build scripts (<code>/build</code>, <code>/build.d/</code>)</td></tr>
+<tr><td><code>recursive-touch</code></td><td>Recursively analyzes ELF binary and script dependencies, updating atime. Also used to output file lists for initramfs</td></tr>
+<tr><td><code>rebuild-kernel-modules-if-necessary</code></td><td>Runs <code>emerge @module-rebuild</code> when kernel module rebuilds are needed</td></tr>
+</tbody>
+</table>
+
+<h3>Download Utilities</h3>
+
+<p>Tools for fetching external resources during builds.</p>
+
+<table>
+<thead>
+<tr><th>Command</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>download</code></td><td>Downloads a file from a URL and outputs it to stdout. Caches in <code>/var/cache/download</code></td></tr>
+<tr><td><code>get-rpm-download-url</code></td><td>Resolves download URLs for RPM packages from YUM/DNF repositories</td></tr>
+<tr><td><code>get-github-download-url</code></td><td>Retrieves download URLs for GitHub release assets</td></tr>
+</tbody>
+</table>
+
+<h3>Maintenance Tools</h3>
+
+<p>Tools for build environment maintenance.</p>
+
+<table>
+<thead>
+<tr><th>Command</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>unmerge-masked-packages</code></td><td>Detects and unmerges masked packages, then rebuilds @world</td></tr>
+<tr><td><code>remove-binpkg</code></td><td>Removes Portage binary packages by atom specification. Defaults to dry-run</td></tr>
+<tr><td><code>findelf</code></td><td>Searches for ELF binaries in a directory tree</td></tr>
+<tr><td><code>with-mysql</code></td><td>Starts a temporary MySQL server, runs a command, then shuts down</td></tr>
+</tbody>
+</table>
+
+<h2>Runtime Dependencies</h2>
+
+<table>
+<thead>
+<tr><th>Package</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-apps/util-linux</code></td><td>Basic system utilities</td></tr>
+<tr><td><code>app-portage/gentoolkit</code></td><td>Portage management tools (<code>equery</code> etc.)</td></tr>
+<tr><td><code>dev-util/pkgdev</code></td><td>Gentoo package development tools</td></tr>
+<tr><td><code>app-arch/zip</code></td><td>ZIP archiver</td></tr>
+<tr><td><code>dev-debug/strace</code></td><td>System call tracer</td></tr>
+<tr><td><code>net-analyzer/tcpdump</code></td><td>Network packet capture</td></tr>
+<tr><td><code>app-editors/nano</code></td><td>Text editor</td></tr>
+<tr><td><code>app-editors/vim</code></td><td>Text editor</td></tr>
+<tr><td><code>net-misc/netkit-telnetd</code></td><td>Telnet daemon</td></tr>
+<tr><td><code>app-misc/figlet</code></td><td>ASCII art text generator</td></tr>
+<tr><td><code>sys-fs/squashfs-tools[lz4,lzma,lzo,xattr,zstd]</code></td><td>SquashFS image creation and extraction</td></tr>
+<tr><td><code>app-admin/eclean-kernel</code></td><td>Automatic cleanup of old kernels</td></tr>
+</tbody>
+</table>
+
+<h2>Command Details</h2>
+
+<h3>list-pkg-files</h3>
+
+<p>The core tool for determining which files go into a genpack image. It uses the Portage Python API to recursively resolve dependencies from the <code>@profile</code>, <code>@genpack-runtime</code> (and optionally <code>@genpack-devel</code>) package sets, then outputs the list of target files.</p>
+
+<ul>
+<li>Packages with the <code>genpack-ignore</code> eclass are skipped</li>
+<li>In non-devel mode, man pages, documentation, header files, etc. are excluded</li>
+<li>Saves the package dependency graph to <code>/.genpack/_pkgs_with_deps.pkl</code> for reuse by the subsequent <code>exec-package-scripts-and-generate-metadata</code></li>
+</ul>
+
+<h3>exec-package-scripts-and-generate-metadata</h3>
+
+<p>Loads the dependency data saved by <code>list-pkg-files</code> and executes per-package post-install scripts from <code>/usr/lib/genpack/package-scripts/&lt;pkgname&gt;/</code>. Then generates the following metadata files in the <code>/.genpack/</code> directory:</p>
+
+<ul>
+<li><code>arch</code> &mdash; System architecture</li>
+<li><code>profile</code> &mdash; genpack profile name</li>
+<li><code>artifact</code> &mdash; Artifact name</li>
+<li><code>variant</code> &mdash; Variant name</li>
+<li><code>timestamp.commit</code> &mdash; Portage tree commit timestamp</li>
+<li><code>packages</code> &mdash; List of installed packages (including USE flags, descriptions, etc.)</li>
+</ul>
+
+<h3>execute-artifact-build-scripts</h3>
+
+<p>Executes the <code>/build</code> script and scripts under <code>/build.d/</code> at the artifact root.</p>
+
+<ul>
+<li><code>/build</code> is executed as root if it exists</li>
+<li>Files in <code>/build.d/</code> are executed as root in sorted order</li>
+<li>Subdirectories in <code>/build.d/</code> execute their scripts as the user matching the directory name</li>
+<li>Non-executable files auto-detect interpreters from extensions (<code>.sh</code> &rarr; <code>/bin/sh</code>, <code>.py</code> &rarr; <code>/usr/bin/python</code>)</li>
+</ul>
+
+<h3>recursive-touch</h3>
+
+<p>Inspects ELF binary headers (magic number <code>\x7fELF</code>) and uses <code>lddtree</code> to recursively resolve shared library dependencies. For scripts, it detects interpreters from shebang lines.</p>
+
+<ul>
+<li>By default, updates atime of target files (used in the subsequent "collect only recently accessed files" phase)</li>
+<li><code>--print-for-initramfs</code> option outputs file lists for initramfs inclusion</li>
+</ul>
+
+<h3>download</h3>
+
+<p>Downloads files from URLs using <code>curl</code> as the backend. Results are cached in <code>/var/cache/download</code> keyed by SHA1 hash of the URL. On re-download, uses HTTP conditional requests (<code>-z</code> flag) to check for modifications.</p>
+
+<h3>get-rpm-download-url</h3>
+
+<p>Parses the <code>repomd.xml</code> of YUM/DNF repositories to retrieve <code>primary.xml</code> metadata and returns the download URL for the latest version of the specified package. Supports gzip, bz2, and xz compression, and caches repository metadata (default TTL: 1 hour).</p>
+
+<h3>get-github-download-url</h3>
+
+<p>Uses the GitHub API to fetch the latest release assets and returns the download URL for assets matching a regex pattern. Also supports the special keywords <code>@tarball</code> (source tarball) and <code>@zipball</code> (source zip).</p>
+
+<h3>with-mysql</h3>
+
+<p>A wrapper tool that starts a temporary MySQL server, executes a given command, then shuts down. On first run, it initializes the data directory and loads timezone data. Network connections are disabled; communication is via local socket only. Used for running database migrations during builds.</p>
+
+<h2>genpack-ignore eclass</h2>
+
+<p>The <code>genpack-progs</code> ebuild inherits the <code>genpack-ignore</code> eclass. This causes <code>list-pkg-files</code> to skip this package when collecting files for the image. Build tools are used in the build environment (lower layer) but are not included in the final runtime image (upper layer).</p>
+
+<section class="source-references">
+<h2>Source References</h2>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/7bc4ad0/genpack/genpack-progs">genpack/genpack-progs ebuild</a> (7bc4ad0)</li>
+</ul>
+</section>
+<!-- content:end -->
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.en.html">genpack — A Gentoo-Based Immutable System Image Build Toolchain</a></li>
+<li><a href="json5.en.html">genpack.json5 Specification Reference</a></li>
+<li><a href="subdirectories.en.html">Artifact Directory Structure</a></li>
+<li><a href="profiles.en.html">genpack-overlay Profile Reference</a></li>
+<li><a href="cli.en.html">genpack CLI Reference</a></li>
+<li><a href="cli-install.en.html">genpack-install CLI Reference</a></li>
+<li><a href="overlay-devlauncher.en.html">genpack/devlauncher Metapackage</a></li>
+<li><a href="artifact-stub.en.html">stub — Multi-Distribution Installer and kexec Boot Loader for VMs</a></li>
+<li><a href="uvp.en.html">A Conversation with Gemini about genpack's Unique Value Proposition</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

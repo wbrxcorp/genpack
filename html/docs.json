@@ -1,0 +1,132 @@
+[
+  {
+    "id": "index",
+    "slug": "index",
+    "title": {
+      "ja": "genpack — Gentoo ベースの不変システムイメージビルドツールチェーン",
+      "en": "genpack — A Gentoo-Based Immutable System Image Build Toolchain"
+    },
+    "description": {
+      "ja": "Gentoo Linux をベースとして用途特化型の不変システムイメージを宣言的に生成・配布・起動するための一連のツール群",
+      "en": "A suite of tools for declaratively building, distributing, and booting purpose-built immutable system images based on Gentoo Linux."
+    },
+    "lastUpdated": "2026-02-28"
+  },
+  {
+    "id": "json5",
+    "slug": "json5",
+    "title": {
+      "ja": "genpack.json5 仕様リファレンス",
+      "en": "genpack.json5 Specification Reference"
+    },
+    "description": {
+      "ja": "genpack でビルドするシステムイメージの宣言的な定義ファイル genpack.json5 の全フィールドを網羅した仕様リファレンス",
+      "en": "Complete specification reference for genpack.json5, the declarative definition file for system images built with genpack"
+    },
+    "lastUpdated": "2026-02-23"
+  },
+  {
+    "id": "subdirectories",
+    "slug": "subdirectories",
+    "title": {
+      "ja": "アーティファクトのディレクトリ構造",
+      "en": "Artifact Directory Structure"
+    },
+    "description": {
+      "ja": "genpack アーティファクトを構成するサブディレクトリ（files/, kernel/, savedconfig/, patches/, env/, overlay/）の役割とビルドフェーズとの対応を解説",
+      "en": "Roles and build-phase mapping of genpack artifact subdirectories: files/, kernel/, savedconfig/, patches/, env/, and overlay/"
+    },
+    "lastUpdated": "2026-02-23"
+  },
+  {
+    "id": "profiles",
+    "slug": "profiles",
+    "title": {
+      "ja": "genpack-overlay プロファイルリファレンス",
+      "en": "genpack-overlay Profile Reference"
+    },
+    "description": {
+      "ja": "genpack イメージのベース環境を定義するプロファイル階層とメタパッケージの仕様",
+      "en": "Profile hierarchy and metapackages that define base environments for genpack images"
+    },
+    "lastUpdated": "2026-02-23"
+  },
+  {
+    "id": "cli",
+    "slug": "cli",
+    "title": {
+      "ja": "genpack CLI リファレンス",
+      "en": "genpack CLI Reference"
+    },
+    "description": {
+      "ja": "genpack コマンドのサブコマンドとオプションの一覧",
+      "en": "Complete reference of genpack subcommands and options"
+    },
+    "lastUpdated": "2026-02-28"
+  },
+  {
+    "id": "cli-install",
+    "slug": "cli-install",
+    "title": {
+      "ja": "genpack-install CLI リファレンス",
+      "en": "genpack-install CLI Reference"
+    },
+    "description": {
+      "ja": "genpack-install コマンドのオプションと動作モードの一覧",
+      "en": "Complete reference of genpack-install options and operation modes"
+    },
+    "lastUpdated": "2026-02-23"
+  },
+  {
+    "id": "overlay-devlauncher",
+    "slug": "overlay-devlauncher",
+    "title": {
+      "ja": "genpack/devlauncher メタパッケージ",
+      "en": "genpack/devlauncher Metapackage"
+    },
+    "description": {
+      "ja": "Wayland環境でのGUI開発作業に必要なツール一式をまとめたメタパッケージの解説",
+      "en": "A metapackage bundling tools for GUI development in a Wayland environment"
+    },
+    "lastUpdated": "2026-02-25"
+  },
+  {
+    "id": "overlay-genpack-progs",
+    "slug": "overlay-genpack-progs",
+    "title": {
+      "ja": "genpack/genpack-progs パッケージ",
+      "en": "genpack/genpack-progs Package"
+    },
+    "description": {
+      "ja": "genpack イメージビルドで使用されるサポートツール群の解説",
+      "en": "Support tools used during the genpack image build process"
+    },
+    "lastUpdated": "2026-02-28"
+  },
+  {
+    "id": "artifact-stub",
+    "slug": "artifact-stub",
+    "title": {
+      "ja": "stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー",
+      "en": "stub — Multi-Distribution Installer and kexec Boot Loader for VMs"
+    },
+    "description": {
+      "ja": "genpack ツールチェーンで構築される、他の Linux ディストリビューションを QEMU/KVM 仮想マシン上にインストールするための使い捨てブート環境",
+      "en": "A disposable boot environment for installing other Linux distributions on QEMU/KVM virtual machines, built with the genpack toolchain."
+    },
+    "lastUpdated": "2026-02-23"
+  },
+  {
+    "id": "uvp",
+    "slug": "uvp",
+    "title": {
+      "ja": "genpackが提供する価値の独自性についての Gemini との対話",
+      "en": "A Conversation with Gemini about genpack's Unique Value Proposition"
+    },
+    "description": {
+      "ja": "同様の目的を持つ既存ツールとの比較から、genpack の目指すところについて Gemini に聞いた",
+      "en": "A discussion with Gemini about what genpack aims to achieve and how it differentiates from existing tools."
+    },
+    "lastUpdated": "2026-02-23"
+  }
+]

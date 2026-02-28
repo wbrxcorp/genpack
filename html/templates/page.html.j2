@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="{{ title }}" />
+<meta property="og:description" content="{{ description }}" />
+<meta property="og:image" content="{{ base_url }}image/article.png" />
+<meta property="og:url" content="{{ base_url }}{{ filename }}" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{ title }}" />
+<meta name="twitter:description" content="{{ description }}" />
+<meta name="twitter:image" content="{{ base_url }}image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="{{ lang }}">
+{% if lang == "ja" %}
+
+<p class="lang-link"><a href="{{ slug }}.en.html">English version</a></p>
+{% endif %}
+
+{{ content }}
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+{% for doc in docs %}
+{% if doc.id != current_id %}
+{% if lang == "ja" %}
+<li><a href="{{ doc.slug }}.html">{{ doc.title.ja }}</a></li>
+{% else %}
+<li><a href="{{ doc.slug }}.en.html">{{ doc.title.en }}</a></li>
+{% endif %}
+{% endif %}
+{% endfor %}
+</ul>
+</nav>
+
+</body>
+</html>

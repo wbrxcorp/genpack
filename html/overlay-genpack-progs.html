@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>genpack/genpack-progs パッケージ</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="image/favicon.png">
+<meta property="og:title" content="genpack/genpack-progs パッケージ" />
+<meta property="og:description" content="genpack イメージビルドで使用されるサポートツール群の解説" />
+<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta property="og:url" content="https://www.walbrix.co.jp/genpack/overlay-genpack-progs.html" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="genpack/genpack-progs パッケージ" />
+<meta name="twitter:description" content="genpack イメージビルドで使用されるサポートツール群の解説" />
+<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
+<meta name="twitter:site" content="@wbrxcorp" />
+</head>
+<body class="ja">
+
+<p class="lang-link"><a href="overlay-genpack-progs.en.html">English version</a></p>
+
+<!-- content:begin -->
+<h1>genpack/genpack-progs パッケージ</h1>
+
+<h2>概要</h2>
+
+<p><code>genpack/genpack-progs</code> は、genpack イメージのビルドプロセスで使用されるサポートツール群をまとめたパッケージである。すべての genpack プロファイルで暗黙的に含まれ、イメージビルド時のファイル収集、依存関係解決、メタデータ生成、外部リソースのダウンロードなどを担う。</p>
+
+<p>各ツールはかつて外部リポジトリ (genpack-progs) から取得していたが、現在は ebuild の <code>files/</code> ディレクトリにインライン化されている。</p>
+
+<h2>インストールされるコマンド一覧</h2>
+
+<h3>ビルドコアツール</h3>
+
+<p>イメージビルドの中核を担い、genpack 本体から直接呼び出されるツール群。</p>
+
+<table>
+<thead>
+<tr><th>コマンド</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>list-pkg-files</code></td><td>Portage パッケージの依存関係を再帰的に解決し、イメージに含めるファイル一覧を生成する</td></tr>
+<tr><td><code>exec-package-scripts-and-generate-metadata</code></td><td>パッケージ固有のポストインストールスクリプトを実行し、<code>/.genpack/</code> 以下にメタデータを生成する</td></tr>
+<tr><td><code>execute-artifact-build-scripts</code></td><td>アーティファクト固有のビルドスクリプト (<code>/build</code>, <code>/build.d/</code>) を実行する</td></tr>
+<tr><td><code>recursive-touch</code></td><td>ELF バイナリとスクリプトの依存関係を再帰的に解析し、atime を更新する。initramfs 用ファイルリストの出力にも使用</td></tr>
+<tr><td><code>rebuild-kernel-modules-if-necessary</code></td><td>カーネルモジュールの再ビルドが必要な場合に <code>emerge @module-rebuild</code> を実行する</td></tr>
+</tbody>
+</table>
+
+<h3>ダウンロードユーティリティ</h3>
+
+<p>ビルド中に外部リソースを取得するためのツール群。</p>
+
+<table>
+<thead>
+<tr><th>コマンド</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>download</code></td><td>URL からファイルをダウンロードし標準出力に出力する。<code>/var/cache/download</code> にキャッシュを保持</td></tr>
+<tr><td><code>get-rpm-download-url</code></td><td>YUM/DNF リポジトリから RPM パッケージのダウンロード URL を解決する</td></tr>
+<tr><td><code>get-github-download-url</code></td><td>GitHub リリースアセットのダウンロード URL を取得する</td></tr>
+</tbody>
+</table>
+
+<h3>メンテナンスツール</h3>
+
+<p>ビルド環境の保守に使用するツール群。</p>
+
+<table>
+<thead>
+<tr><th>コマンド</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>unmerge-masked-packages</code></td><td>マスクされたパッケージを検出・アンマージし、@world を再ビルドする</td></tr>
+<tr><td><code>remove-binpkg</code></td><td>Portage バイナリパッケージをアトム指定で削除する。デフォルトは dry-run</td></tr>
+<tr><td><code>findelf</code></td><td>ディレクトリツリー内の ELF バイナリを検索する</td></tr>
+<tr><td><code>with-mysql</code></td><td>一時的な MySQL サーバーを起動してコマンドを実行し、終了後にシャットダウンする</td></tr>
+</tbody>
+</table>
+
+<h2>ランタイム依存パッケージ</h2>
+
+<table>
+<thead>
+<tr><th>パッケージ</th><th>説明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sys-apps/util-linux</code></td><td>基本的なシステムユーティリティ</td></tr>
+<tr><td><code>app-portage/gentoolkit</code></td><td>Portage 管理ツール (<code>equery</code> 等)</td></tr>
+<tr><td><code>dev-util/pkgdev</code></td><td>Gentoo パッケージ開発ツール</td></tr>
+<tr><td><code>app-arch/zip</code></td><td>ZIP アーカイバ</td></tr>
+<tr><td><code>dev-debug/strace</code></td><td>システムコールトレーサ</td></tr>
+<tr><td><code>net-analyzer/tcpdump</code></td><td>ネットワークパケットキャプチャ</td></tr>
+<tr><td><code>app-editors/nano</code></td><td>テキストエディタ</td></tr>
+<tr><td><code>app-editors/vim</code></td><td>テキストエディタ</td></tr>
+<tr><td><code>net-misc/netkit-telnetd</code></td><td>Telnet デーモン</td></tr>
+<tr><td><code>app-misc/figlet</code></td><td>ASCII アートテキスト生成</td></tr>
+<tr><td><code>sys-fs/squashfs-tools[lz4,lzma,lzo,xattr,zstd]</code></td><td>SquashFS イメージの作成・展開</td></tr>
+<tr><td><code>app-admin/eclean-kernel</code></td><td>古いカーネルの自動削除</td></tr>
+</tbody>
+</table>
+
+<h2>各コマンドの詳細</h2>
+
+<h3>list-pkg-files</h3>
+
+<p>genpack イメージに含めるファイルを決定するコアツール。Portage の Python API を使用して <code>@profile</code>、<code>@genpack-runtime</code>（およびオプションで <code>@genpack-devel</code>）パッケージセットの依存関係を再帰的に解決し、対象ファイルの一覧を出力する。</p>
+
+<ul>
+<li><code>genpack-ignore</code> eclass を持つパッケージはスキップされる</li>
+<li>非 devel モードでは man ページ、ドキュメント、ヘッダファイル等を除外</li>
+<li>パッケージ依存関係グラフを <code>/.genpack/_pkgs_with_deps.pkl</code> に保存し、後続の <code>exec-package-scripts-and-generate-metadata</code> で再利用する</li>
+</ul>
+
+<h3>exec-package-scripts-and-generate-metadata</h3>
+
+<p><code>list-pkg-files</code> が保存した依存関係データを読み込み、パッケージごとのポストインストールスクリプト (<code>/usr/lib/genpack/package-scripts/&lt;pkgname&gt;/</code>) を実行する。その後、<code>/.genpack/</code> ディレクトリに以下のメタデータファイルを生成する：</p>
+
+<ul>
+<li><code>arch</code> &mdash; システムアーキテクチャ</li>
+<li><code>profile</code> &mdash; genpack プロファイル名</li>
+<li><code>artifact</code> &mdash; アーティファクト名</li>
+<li><code>variant</code> &mdash; バリアント名</li>
+<li><code>timestamp.commit</code> &mdash; Portage ツリーのコミットタイムスタンプ</li>
+<li><code>packages</code> &mdash; インストール済みパッケージ一覧（USE フラグ、説明等を含む）</li>
+</ul>
+
+<h3>execute-artifact-build-scripts</h3>
+
+<p>アーティファクトのルートにある <code>/build</code> スクリプトおよび <code>/build.d/</code> ディレクトリ配下のスクリプトを実行する。</p>
+
+<ul>
+<li><code>/build</code> が存在すれば root として実行</li>
+<li><code>/build.d/</code> 内のファイルはソート順に root として実行</li>
+<li><code>/build.d/</code> 内のサブディレクトリはディレクトリ名のユーザーとして配下のスクリプトを実行</li>
+<li>非実行可能ファイルは拡張子からインタプリタを自動検出（<code>.sh</code> &rarr; <code>/bin/sh</code>、<code>.py</code> &rarr; <code>/usr/bin/python</code>）</li>
+</ul>
+
+<h3>recursive-touch</h3>
+
+<p>ELF バイナリのヘッダ（マジックナンバー <code>\x7fELF</code>）を検査し、<code>lddtree</code> を使って共有ライブラリの依存関係を再帰的に解決する。スクリプトの場合はシバン行からインタプリタを検出する。</p>
+
+<ul>
+<li>デフォルトでは対象ファイルの atime を更新（後続の「最近アクセスされたファイルのみ収集」フェーズで使用）</li>
+<li><code>--print-for-initramfs</code> オプションで initramfs に含めるファイル一覧を出力</li>
+</ul>
+
+<h3>download</h3>
+
+<p><code>curl</code> をバックエンドとして URL からファイルをダウンロードする。ダウンロード結果は <code>/var/cache/download</code> に URL の SHA1 ハッシュをキーとしてキャッシュされ、再ダウンロード時には HTTP の条件付きリクエスト (<code>-z</code> フラグ) で変更の有無を確認する。</p>
+
+<h3>get-rpm-download-url</h3>
+
+<p>YUM/DNF リポジトリの <code>repomd.xml</code> を解析して <code>primary.xml</code> メタデータを取得し、指定パッケージの最新版ダウンロード URL を返す。gzip、bz2、xz 圧縮に対応し、リポジトリメタデータのキャッシュ（デフォルト TTL: 1時間）を保持する。</p>
+
+<h3>get-github-download-url</h3>
+
+<p>GitHub API を使用して最新リリースのアセットを取得し、正規表現パターンに一致するアセットのダウンロード URL を返す。特殊キーワード <code>@tarball</code>（ソース tarball）と <code>@zipball</code>（ソース zip）にも対応する。</p>
+
+<h3>with-mysql</h3>
+
+<p>一時的な MySQL サーバーを起動し、指定されたコマンドを実行した後にシャットダウンするラッパーツール。初回起動時にはデータディレクトリの初期化とタイムゾーンデータのロードを行う。ネットワーク接続は無効化され、ローカルソケットのみで通信する。ビルド時のデータベースマイグレーション実行に使用される。</p>
+
+<h2>genpack-ignore eclass</h2>
+
+<p><code>genpack-progs</code> の ebuild は <code>genpack-ignore</code> eclass を継承している。これにより、<code>list-pkg-files</code> がイメージに含めるファイルを収集する際にこのパッケージ自体はスキップされる。ビルドツールはビルド環境（lower レイヤー）で使用されるが、最終的なランタイムイメージ（upper レイヤー）には含まれない。</p>
+
+<section class="source-references">
+<h2>ソースリファレンス</h2>
+<ul>
+<li><a href="https://github.com/wbrxcorp/genpack-overlay/tree/7bc4ad0/genpack/genpack-progs">genpack/genpack-progs ebuild</a> (7bc4ad0)</li>
+</ul>
+</section>
+<!-- content:end -->
+
+<nav class="doc-nav">
+<h2>Other Documents</h2>
+<ul>
+<li><a href="index.html">genpack — Gentoo ベースの不変システムイメージビルドツールチェーン</a></li>
+<li><a href="json5.html">genpack.json5 仕様リファレンス</a></li>
+<li><a href="subdirectories.html">アーティファクトのディレクトリ構造</a></li>
+<li><a href="profiles.html">genpack-overlay プロファイルリファレンス</a></li>
+<li><a href="cli.html">genpack CLI リファレンス</a></li>
+<li><a href="cli-install.html">genpack-install CLI リファレンス</a></li>
+<li><a href="overlay-devlauncher.html">genpack/devlauncher メタパッケージ</a></li>
+<li><a href="artifact-stub.html">stub — VM 用マルチディストリビューションインストーラ兼 kexec ブートローダー</a></li>
+<li><a href="uvp.html">genpackが提供する価値の独自性についての Gemini との対話</a></li>
+</ul>
+</nav>
+
+</body>
+</html>

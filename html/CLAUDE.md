@@ -4,31 +4,83 @@
 
 - index.md をはじめとするすべての Markdownファイルをオリジナルのドキュメントとする。(このCLAUDE.mdはもちろん除く！)
 - .mdファイルにはそれぞれ対応する .htmlファイルを生成する
-    - HTMLファイル間で共有されるリソースは別ファイルに抜き出して良い。その際、サブディレクトリを設けても構わない。
     - 図形を用いた表現をアスキーアートで行うと崩れがち（日本語環境特有？）なので代わりにCSS(または追加の表現力が必要な場合SVG)で行うこと
-    - 各HTMLの末尾には 他のドキュメントへのリンク一覧を設ける
-    - もしドキュメント数が増えたことでmd->html変換をスクリプト化する方が効率的と判断した場合はその旨を提案すること
+    - HTMLファイル間で共有されるリソースは別ファイルに抜き出して良い。その際、サブディレクトリを設けても構わない。
     - 生成されたファイルのデプロイ先は https://www.walbrix.co.jp/genpack/ を想定すること(デプロイ作業自体は不要)
-    - image/favicon.png をページのいわゆるfaviconとして指定すること
 - genpack自体に何らかの修正や拡張があった場合は指示に従い Markdownを更新する
     - Markdownドキュメントには関連gitリポジトリのどの時点のスナップショットを元にドキュメントが書かれたかを（githubのリンクで）残すためのセクションを末尾に記載する。
 - Markdownを更新したときは対応するHTMLも更新する
 - Markdownはオリジナルを日本語とするが、それぞれの .md ファイルに対して .en.md というネーミングで英語版も作成・維持する
 - 英語版についてもオリジナルの日本語版と同様HTMLを生成する
-- 日本語版のHTMLには対応する英語版へのリンクを設ける。英語版から日本語版へのリンクバックは不要。
 
-## HTMLに挿入するソーシャルメディア用メタデータ
+## HTML生成の仕組み
+
+HTMLは `generate-page.py` + Jinja2テンプレート (`templates/page.html.j2`) + メタデータ (`docs.json`) で生成する。
+
+### ファイル構成
+
+| ファイル | 役割 |
+|---|---|
+| `docs.json` | 全ページのメタデータ（slug, タイトル, 説明文, 更新日） |
+| `templates/page.html.j2` | 共通HTMLテンプレート。`<head>` メタタグ、言語リンク、ナビゲーションを生成 |
+| `generate-page.py` | 既存HTMLから本文を抽出し、テンプレートで `<head>` とナビゲーションを再生成するスクリプト |
+
+### テンプレートが自動生成する部分
+
+- `<head>` 内のメタタグ一式（OGP, Twitter Card, favicon, CSS）
+- 日本語版の英語版リンク (`<p class="lang-link">`)
+- ページ末尾のナビゲーション (`<nav class="doc-nav">`)
+
+### 本文のマーカーコメント
+
+各HTMLの本文は `<!-- content:begin -->` と `<!-- content:end -->` で囲まれている。`generate-page.py` はこのマーカー間の内容を抽出し、テンプレートで囲み直して書き戻す。
 
 ```html
-<meta property="og:title" content="記事のタイトル" />
-<meta property="og:description" content="記事の概要" />
-<meta property="og:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
-<meta property="og:url" content="記事のURL" />
-<meta property="og:type" content="article" />
+<body class="ja">
 
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="記事のタイトル" />
-<meta name="twitter:description" content="記事の概要" />
-<meta name="twitter:image" content="https://www.walbrix.co.jp/genpack/image/article.png" />
-<meta name="twitter:site" content="@wbrxcorp" />
+<p class="lang-link">...</p>
+
+<!-- content:begin -->
+<h1>タイトル</h1>
+...本文...
+<section class="source-references">...</section>
+<!-- content:end -->
+
+<nav class="doc-nav">...</nav>
+</body>
 ```
+
+本文を手動で編集する場合は、マーカーの内側だけを変更すること。マーカーの外側はスクリプトが上書きする。
+
+### 使い方
+
+```bash
+# 全ページを再生成
+python generate-page.py
+
+# 指定ページのみ再生成
+python generate-page.py cli-install
+
+# docs.json にあるが HTML が存在しないスラッグを表示
+python generate-page.py --print-missing
+```
+
+### 典型的なワークフロー
+
+#### 既存ページの本文を更新する場合
+
+1. Markdownを編集する
+2. 対応するHTMLの `<!-- content:begin -->` 〜 `<!-- content:end -->` 間を更新する
+3. 英語版 (.en.md, .en.html) も同様に更新する
+4. `python generate-page.py {slug}` を実行してメタタグとナビゲーションを再生成する
+
+#### 新しいページを追加する場合
+
+1. `{slug}.md` と `{slug}.en.md` を作成する
+2. `{slug}.html` と `{slug}.en.html` を作成する（本文を `<!-- content:begin/end -->` マーカーで囲むこと）
+3. `docs.json` にエントリを追加する
+4. `python generate-page.py` を実行して全ページのナビゲーションを更新する
+
+#### docs.json のタイトルや説明文を変更した場合
+
+`python generate-page.py` を実行すれば全ページの `<head>` メタタグとナビゲーションに反映される。
