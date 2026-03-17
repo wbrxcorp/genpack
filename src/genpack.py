@@ -588,11 +588,17 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
 def create_work_root():
     try:
         os.makedirs(work_root, exist_ok=False)
-        # add +d attrribute to work_root to exclude from backup
+        # add +d attribute to work_root to exclude from backup,
+        # preserving any attributes already set by filesystem inheritance
+        FS_IOC_GETFLAGS = 0x80086601
         FS_IOC_SETFLAGS = 0x40086602
         FS_NODUMP_FL    = 0x00000040
         fd = os.open(work_root, os.O_RDONLY | os.O_DIRECTORY)
-        fcntl.ioctl(fd, FS_IOC_SETFLAGS, struct.pack("i", FS_NODUMP_FL))
+        try:
+            flags = struct.unpack("i", fcntl.ioctl(fd, FS_IOC_GETFLAGS, struct.pack("i", 0)))[0]
+            fcntl.ioctl(fd, FS_IOC_SETFLAGS, struct.pack("i", flags | FS_NODUMP_FL))
+        finally:
+            os.close(fd)
     except FileExistsError:
         if not os.path.isdir(work_root):
             raise
