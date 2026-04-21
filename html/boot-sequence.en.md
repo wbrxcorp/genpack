@@ -214,6 +214,88 @@ The SquashFS image is attached as a `virtio-blk-pci` device in read-only mode. T
 
 The vm command also supports virtiofs. It launches virtiofsd to share a host directory with the guest, which can be used as the overlayfs upper layer. When using virtiofs, the initramfs mounts virtiofs as root based on `root=fs rootfstype=virtiofs rw`.
 
+### vsock Host Communication
+
+QEMU/KVM provides a communication channel between the guest and host through the virtio-vsock device. The vm command automatically enables vsock for all VMs.
+
+#### Guest CID
+
+Each VM is assigned a guest CID (Context Identifier) uniquely determined from the VM name by `vsock::determine_guest_cid()`. The CID is displayed at startup:
+
+```
+Guest CID: 12345
+`ssh user@vsock%12345` to login to the VM.
+```
+
+SSH login via vsock requires the guest image to have `socket_vmid` configured in systemd-ssh-generator.
+
+#### --sock-forward Option
+
+SLIRP NAT cannot reach Unix domain sockets on the host [^11]. The `--sock-forward` option lets the vm command launch and manage a proxy process (socat) that bridges vsock connections from inside the guest to a Unix domain socket server on the host.
+
+```
+vm run system.squashfs --sock-forward /run/user/1007/aichannel.sock
+```
+
+Multiple paths can be specified:
+
+```
+vm run system.squashfs \
+  --sock-forward /run/user/1007/foo.sock \
+  --sock-forward /run/user/1007/bar.sock
+```
+
+**vsock port number assignment:**
+
+The vsock listen port number equals the guest CID. For multiple `--sock-forward` entries, ports are assigned as CID+0, CID+1, CID+2, ... The guest can retrieve its own CID via `IOCTL_VM_SOCKETS_GET_LOCAL_CID` ioctl on `/dev/vsock`, so guest-side scripts can connect to the correct port using the rule "port = own CID + offset" without any additional configuration.
+
+**Communication path:**
+
+```
+[Guest application]
+    ↓ TCP localhost:PORT
+[Guest socat bridge]  ← launched by systemd unit
+    ↓ VSOCK CID=2(host):PORT
+[Host socat proxy]    ← launched and managed by vm command
+    ↓ UNIX-CONNECT (fork per connection)
+[Host Unix domain socket server]
+```
+
+The `fork` option ensures an independent Unix socket connection per incoming connection, avoiding issues with concurrent connections and keep-alive timeouts [^12].
+
+**Guest-side bridge:**
+
+The guest-side TCP→vsock bridge can be implemented with the following helper script and systemd template unit.
+
+`/usr/local/bin/sock-forward`:
+
+```python
+#!/usr/bin/python3
+import os, fcntl, struct, socket, sys
+fd = os.open("/dev/vsock", os.O_RDONLY)
+cid = struct.unpack("I", fcntl.ioctl(fd, socket.IOCTL_VM_SOCKETS_GET_LOCAL_CID, bytes(4)))[0]
+os.close(fd)
+arg = sys.argv[1].split(":")
+port, offset = arg[0], int(arg[1]) if len(arg) > 1 else 0
+os.execlp("socat", "socat", f"TCP-LISTEN:{port},fork,reuseaddr", f"VSOCK-CONNECT:2:{cid + offset}")
+```
+
+`/etc/systemd/system/sock-forward@.service`:
+
+```ini
+[Unit]
+Description=VM service bridge (TCP %i -> vsock host)
+
+[Service]
+ExecStart=/usr/local/bin/sock-forward %i
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Running `systemctl enable sock-forward@8080` starts a bridge from `localhost:8080` to `vsock:2:<own CID>`. Adding an offset suffix (e.g., `sock-forward@8080:1`) maps to the second `--sock-forward` path on the host.
+
 ### vm Service Mode
 
 The `vm` command has a service mode that reads `vm.ini` files. The directory structure for each VM is as follows:
@@ -275,6 +357,10 @@ Shutdown of a genpack image follows the normal systemd shutdown process, after w
 [^9]: An undocumented feature for coexistence with non-genpack systems. If the data partition contains its own grub.cfg or kernel/initramfs, a boot from there is attempted. Success is not guaranteed.
 
 [^10]: BIOS boot assumes an MBR partition layout. For GPT disks, EFI boot is used instead.
+
+[^11]: SLIRP is a user-space NAT that handles only TCP/UDP. Unix domain sockets on the host exist outside the TCP/IP network and are therefore unreachable via SLIRP. Host TCP services are accessible directly through SLIRP NAT and are outside the scope of `--sock-forward`.
+
+[^12]: QEMU's `--guestfwd` option also supports forwarding to Unix domain sockets, but it reuses a single chardev (Unix socket connection) for all TCP connections, which cannot handle concurrent connections or keep-alive timeouts in practice. The vsock + socat architecture avoids this limitation.
 
 ## Source References
 

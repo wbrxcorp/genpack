@@ -214,6 +214,88 @@ SquashFS イメージは `virtio-blk-pci` デバイスとして read-only で接
 
 vm コマンドは virtiofs もサポートしています。virtiofsd を起動してホストのディレクトリをゲストに共有し、overlayfs の upper 層として使用できます。virtiofs 使用時、initramfs は `root=fs rootfstype=virtiofs rw` に基づいて virtiofs をルートとしてマウントします。
 
+### vsock によるホスト通信
+
+QEMU/KVM は virtio-vsock デバイスを通じてゲストとホスト間の通信チャネルを提供します。vm コマンドはすべての VM に対して vsock を自動的に有効化します。
+
+#### ゲスト CID
+
+各 VM には `vsock::determine_guest_cid()` によって VM 名から一意に決定されるゲスト CID（Context Identifier）が割り当てられます。起動時に CID が表示されます:
+
+```
+Guest CID: 12345
+`ssh user@vsock%12345` to login to the VM.
+```
+
+vsock を使った SSH ログインには、ゲストイメージ側に `socket_vmid` の systemd-ssh-generator 設定が必要です。
+
+#### --sock-forward オプション
+
+SLIRP の NAT ではホスト上の Unix ドメインソケットに直接到達できません [^11]。`--sock-forward` オプションは、ゲスト内の vsock 接続をホスト上の Unix ドメインソケットサーバーにブリッジするプロキシプロセス（socat）を vm コマンドが起動・管理する機能です。
+
+```
+vm run system.squashfs --sock-forward /run/user/1007/aichannel.sock
+```
+
+複数指定可能です:
+
+```
+vm run system.squashfs \
+  --sock-forward /run/user/1007/foo.sock \
+  --sock-forward /run/user/1007/bar.sock
+```
+
+**vsock ポート番号の決定:**
+
+vsock のリッスンポート番号はゲスト CID と同じ値になります。複数指定した場合は CID+0、CID+1、CID+2、… と順に割り当てられます。ゲスト内から `/dev/vsock` への `IOCTL_VM_SOCKETS_GET_LOCAL_CID` ioctl で自身の CID を取得できるため、ゲスト側スクリプトは「ポート番号 = 自分の CID + オフセット」という規則だけで正しいポートに接続できます。
+
+**通信経路:**
+
+```
+[ゲスト内アプリ]
+    ↓ TCP localhost:PORT
+[ゲスト内 socat ブリッジ]  ← systemd ユニットで自動起動
+    ↓ VSOCK CID=2(host):PORT
+[ホスト側 socat プロキシ]  ← vm コマンドが起動・管理
+    ↓ UNIX-CONNECT（接続ごとに fork）
+[ホスト上の Unix ドメインソケットサーバー]
+```
+
+`fork` オプションにより接続ごとに独立した Unix ソケット接続が確立されるため、並行接続・keep-alive タイムアウトの問題が発生しません [^12]。
+
+**ゲスト側ブリッジ:**
+
+ゲスト側の TCP → vsock ブリッジは以下のヘルパースクリプトと systemd テンプレートユニットで実現できます。
+
+`/usr/local/bin/sock-forward`:
+
+```python
+#!/usr/bin/python3
+import os, fcntl, struct, socket, sys
+fd = os.open("/dev/vsock", os.O_RDONLY)
+cid = struct.unpack("I", fcntl.ioctl(fd, socket.IOCTL_VM_SOCKETS_GET_LOCAL_CID, bytes(4)))[0]
+os.close(fd)
+arg = sys.argv[1].split(":")
+port, offset = arg[0], int(arg[1]) if len(arg) > 1 else 0
+os.execlp("socat", "socat", f"TCP-LISTEN:{port},fork,reuseaddr", f"VSOCK-CONNECT:2:{cid + offset}")
+```
+
+`/etc/systemd/system/sock-forward@.service`:
+
+```ini
+[Unit]
+Description=VM service bridge (TCP %i -> vsock host)
+
+[Service]
+ExecStart=/usr/local/bin/sock-forward %i
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`systemctl enable sock-forward@8080` とすれば `localhost:8080 → vsock:2:<自分の CID>` のブリッジが起動します。ポート番号に `:1`、`:2` … のオフセットを付加することで（例: `sock-forward@8080:1`）複数のホストソケットに対応できます。
+
 ### vm サービスモード
 
 `vm` コマンドには `vm.ini` ファイルを読み取るサービスモードがあります。各 VM のディレクトリ構成は以下の通りです。
@@ -275,6 +357,10 @@ genpack イメージのシャットダウンは通常の systemd シャットダ
 [^9]: genpack 以外のシステムとの共存を想定した隠し機能です。データパーティション上に独立した grub.cfg やカーネル/initramfs があれば、そちらからの起動を試みます。常に成功する保証はありません。
 
 [^10]: BIOS ブートは MBR パーティション構成が前提です。GPT ディスクの場合は EFI ブートが使用されます。
+
+[^11]: SLIRP は TCP/UDP のみを対象としたユーザー空間 NAT です。ホスト上の Unix ドメインソケットは TCP/IP ネットワークの外に存在するため SLIRP では到達できません。ホスト上の TCP サービスへのアクセスは SLIRP の NAT で直接届くため、`--sock-forward` の対象外です。
+
+[^12]: QEMU の `--guestfwd` オプションも Unix ドメインソケットへの転送をサポートしますが、すべての TCP 接続に対して 1 本の chardev（Unix ソケット接続）を使い回す設計のため、並行接続や keep-alive タイムアウトがある実際の使用には耐えられません。vsock + socat のアーキテクチャはこの制約を回避します。
 
 ## ソースリファレンス
 

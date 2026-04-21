@@ -22,7 +22,7 @@
 <p class="lang-link"><a href="boot-sequence.en.html">English version</a></p>
 
 <p class="last-updated">
-最終更新: <time>2026-02-28</time>
+最終更新: <time>2026-04-21</time>
 </p>
 
 <!-- content:begin -->
@@ -307,6 +307,78 @@
 
 <p>vm コマンドは virtiofs もサポートしています。virtiofsd を起動してホストのディレクトリをゲストに共有し、overlayfs の upper 層として使用できます。virtiofs 使用時、initramfs は <code>root=fs rootfstype=virtiofs rw</code> に基づいて virtiofs をルートとしてマウントします。</p>
 
+<h3>vsock によるホスト通信</h3>
+
+<p>QEMU/KVM は virtio-vsock デバイスを通じてゲストとホスト間の通信チャネルを提供します。vm コマンドはすべての VM に対して vsock を自動的に有効化します。</p>
+
+<h4>ゲスト CID</h4>
+
+<p>各 VM には <code>vsock::determine_guest_cid()</code> によって VM 名から一意に決定されるゲスト CID（Context Identifier）が割り当てられます。起動時に CID が表示されます:</p>
+
+<pre><code>Guest CID: 12345
+`ssh user@vsock%12345` to login to the VM.</code></pre>
+
+<p>vsock を使った SSH ログインには、ゲストイメージ側に <code>socket_vmid</code> の systemd-ssh-generator 設定が必要です。</p>
+
+<h4>--sock-forward オプション</h4>
+
+<p>SLIRP の NAT ではホスト上の Unix ドメインソケットに直接到達できません <sup><a href="#fn11" id="fnref11">[11]</a></sup>。<code>--sock-forward</code> オプションは、ゲスト内の vsock 接続をホスト上の Unix ドメインソケットサーバーにブリッジするプロキシプロセス（socat）を vm コマンドが起動・管理する機能です。</p>
+
+<pre><code>vm run system.squashfs --sock-forward /run/user/1007/aichannel.sock</code></pre>
+
+<p>複数指定可能です:</p>
+
+<pre><code>vm run system.squashfs \
+  --sock-forward /run/user/1007/foo.sock \
+  --sock-forward /run/user/1007/bar.sock</code></pre>
+
+<p><strong>vsock ポート番号の決定:</strong></p>
+
+<p>vsock のリッスンポート番号はゲスト CID と同じ値になります。複数指定した場合は CID+0、CID+1、CID+2、… と順に割り当てられます。ゲスト内から <code>/dev/vsock</code> への <code>IOCTL_VM_SOCKETS_GET_LOCAL_CID</code> ioctl で自身の CID を取得できるため、ゲスト側スクリプトは「ポート番号 = 自分の CID + オフセット」という規則だけで正しいポートに接続できます。</p>
+
+<p><strong>通信経路:</strong></p>
+
+<div class="sock-forward-diagram">
+<div class="sock-forward-row guest-app">[ゲスト内アプリ]</div>
+<div class="sock-forward-arrow">↓ TCP localhost:PORT</div>
+<div class="sock-forward-row guest-socat">[ゲスト内 socat ブリッジ] <span class="sock-forward-note">← systemd ユニットで自動起動</span></div>
+<div class="sock-forward-arrow">↓ VSOCK CID=2(host):PORT</div>
+<div class="sock-forward-row host-socat">[ホスト側 socat プロキシ] <span class="sock-forward-note">← vm コマンドが起動・管理</span></div>
+<div class="sock-forward-arrow">↓ UNIX-CONNECT（接続ごとに fork）</div>
+<div class="sock-forward-row host-socket">[ホスト上の Unix ドメインソケットサーバー]</div>
+</div>
+
+<p><code>fork</code> オプションにより接続ごとに独立した Unix ソケット接続が確立されるため、並行接続・keep-alive タイムアウトの問題が発生しません <sup><a href="#fn12" id="fnref12">[12]</a></sup>。</p>
+
+<p><strong>ゲスト側ブリッジ:</strong></p>
+
+<p>ゲスト側の TCP → vsock ブリッジは以下のヘルパースクリプトと systemd テンプレートユニットで実現できます。</p>
+
+<p><code>/usr/local/bin/sock-forward</code>:</p>
+
+<pre><code>#!/usr/bin/python3
+import os, fcntl, struct, socket, sys
+fd = os.open("/dev/vsock", os.O_RDONLY)
+cid = struct.unpack("I", fcntl.ioctl(fd, socket.IOCTL_VM_SOCKETS_GET_LOCAL_CID, bytes(4)))[0]
+os.close(fd)
+arg = sys.argv[1].split(":")
+port, offset = arg[0], int(arg[1]) if len(arg) > 1 else 0
+os.execlp("socat", "socat", f"TCP-LISTEN:{port},fork,reuseaddr", f"VSOCK-CONNECT:2:{cid + offset}")</code></pre>
+
+<p><code>/etc/systemd/system/sock-forward@.service</code>:</p>
+
+<pre><code>[Unit]
+Description=VM service bridge (TCP %i -&gt; vsock host)
+
+[Service]
+ExecStart=/usr/local/bin/sock-forward %i
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+
+<p><code>systemctl enable sock-forward@8080</code> とすれば <code>localhost:8080 → vsock:2:&lt;自分の CID&gt;</code> のブリッジが起動します。ポート番号に <code>:1</code>、<code>:2</code> … のオフセットを付加することで（例: <code>sock-forward@8080:1</code>）複数のホストソケットに対応できます。</p>
+
 <h3>vm サービスモード</h3>
 
 <p><code>vm</code> コマンドには <code>vm.ini</code> ファイルを読み取るサービスモードがあります。各 VM のディレクトリ構成は以下の通りです。</p>
@@ -369,6 +441,8 @@
 <li id="fn8">GRUB は INI ファイルフォーマットをネイティブに解析できないため、ブートローダー段階で必要な設定は GRUB スクリプト形式の system.cfg に、genpack-init 段階で必要なシステム設定は INI 形式の system.ini にという 2 層構造になっています。 <a href="#fnref8">↩</a></li>
 <li id="fn9">genpack 以外のシステムとの共存を想定した隠し機能です。データパーティション上に独立した grub.cfg やカーネル/initramfs があれば、そちらからの起動を試みます。常に成功する保証はありません。 <a href="#fnref9">↩</a></li>
 <li id="fn10">BIOS ブートは MBR パーティション構成が前提です。GPT ディスクの場合は EFI ブートが使用されます。 <a href="#fnref10">↩</a></li>
+<li id="fn11">SLIRP は TCP/UDP のみを対象としたユーザー空間 NAT です。ホスト上の Unix ドメインソケットは TCP/IP ネットワークの外に存在するため SLIRP では到達できません。ホスト上の TCP サービスへのアクセスは SLIRP の NAT で直接届くため、<code>--sock-forward</code> の対象外です。 <a href="#fnref11">↩</a></li>
+<li id="fn12">QEMU の <code>--guestfwd</code> オプションも Unix ドメインソケットへの転送をサポートしますが、すべての TCP 接続に対して 1 本の chardev（Unix ソケット接続）を使い回す設計のため、並行接続や keep-alive タイムアウトがある実際の使用には耐えられません。vsock + socat のアーキテクチャはこの制約を回避します。 <a href="#fnref12">↩</a></li>
 </ol>
 </section>
 
@@ -389,6 +463,7 @@
 <section class="update-history">
 <h2>更新履歴</h2>
 <ul>
+<li><time>2026-04-21</time> — vm コマンドの --sock-forward オプション（vsock 経由でホスト Unix ドメインソケットにブリッジ）を追加</li>
 <li><time>2026-02-28</time> — grub.cfg 処理フローの設計意図を脚注に追加</li>
 <li><time>2026-02-28</time> — ブートローダーと grub.cfg の処理フローを追加</li>
 <li><time>2026-02-28</time> — 起動機序ドキュメントに設計意図の脚注を追加</li>

@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-04-21",
+    "slugs": ["boot-sequence"],
+    "description": {
+      "ja": "vm コマンドの --sock-forward オプション（vsock 経由でホスト Unix ドメインソケットにブリッジ）を追加",
+      "en": "Document --sock-forward option for bridging guest vsock to host Unix domain socket"
+    }
+  },
+  {
     "date": "2026-02-28",
     "slugs": ["boot-sequence"],
     "description": {
