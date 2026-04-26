@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import os,logging,io,tarfile,subprocess,re,json,argparse,json,time,fcntl,struct,errno
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, Literal
 
@@ -12,7 +11,6 @@ import requests # dev-python/requests
 
 DEFAULT_LOWER_SIZE_IN_GIB = 128  # Default max size of lower image in GiB
 DEFAULT_UPPER_SIZE_IN_GIB = 20  # Default max size of upper image in GiB
-OVERLAY_SOURCE = "https://github.com/wbrxcorp/genpack-overlay.git"
 
 debug = False  # Set to True to enable debug output
 arch = os.uname().machine
@@ -157,6 +155,9 @@ def get_latest_stage3_tarball_url(stage3_variant = "systemd"):
 def get_latest_portage_tarball_url():
     return base_url + "snapshots/portage-latest.tar.xz"
 
+def get_latest_overlay_tarball_url():
+    return "https://github.com/wbrxcorp/genpack-overlay/archive/refs/heads/main.tar.gz"
+
 def headers_to_info(headers):
     return f"Last-Modified:{headers.get('Last-Modified', '')} ETag:{headers.get('ETag', '')} Content-Length:{headers.get('Content-Length', '')}"
 
@@ -164,7 +165,7 @@ def get_headers(url):
     """Get the headers of a URL."""
     logging.debug(f"Getting headers for URL: {url}")
     headers = {'User-Agent': user_agent}
-    response = requests.head(url, headers=headers)
+    response = requests.head(url, headers=headers, allow_redirects=True)
     response.raise_for_status()  # Raise an error for bad responses
     logging.debug(f"Headers for {url}: {response.headers}")
     return response.headers
@@ -180,7 +181,7 @@ def download(url, dest):
     logging.info(f"Downloaded {url} to {dest}")
     return response.headers
 
-def setup_lower_image(lower_image, stage3_tarball, portage_tarball):
+def setup_lower_image(lower_image, stage3_tarball, portage_tarball, overlay_tarball):
     # create image file
     lower_size_in_gib = genpack_json.get("lower-layer-capacity", DEFAULT_LOWER_SIZE_IN_GIB)
     logging.info(f"Creating image file at {lower_image} with size {lower_size_in_gib} GiB.")
@@ -196,21 +197,26 @@ def setup_lower_image(lower_image, stage3_tarball, portage_tarball):
         logging.info("Extracting portage to lower image...")
         subprocess.run(["genpack-helper", "nspawn", lower_image, "mkdir", "-p", "/var/db/repos/gentoo"], check=True)
         with open(portage_tarball, "rb") as f:
-            helper = subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "Jxpf", "-", "-C", "/var/db/repos/gentoo", "--strip-components=1"],
+            subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "Jxpf", "-", "-C", "/var/db/repos/gentoo", "--strip-components=1"],
                                 stdin=f, check=True)
         logging.info("Portage extracted successfully.")
+        logging.info("Extracting overlay to lower image...")
+        subprocess.run(["genpack-helper", "nspawn", lower_image, "mkdir", "-p", "/var/db/repos/genpack-overlay"], check=True)
+        with open(overlay_tarball, "rb") as f:
+            subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "xzf", "-", "-C", "/var/db/repos/genpack-overlay", "--strip-components=1"],
+                                stdin=f, check=True)
+        script = f"""set -e
+echo "Creating repos.conf for genpack-overlay"
+mkdir -p /etc/portage/repos.conf
+echo -e '[genpack-overlay]\nlocation=/var/db/repos/genpack-overlay' > /etc/portage/repos.conf/genpack-overlay.conf
+#sync # somehow genpack-overlay.conf vanishes without this sync
+"""
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True, stdout=subprocess.PIPE)
+        logging.info("Overlay extracted successfully.")
+
         # workaround for https://bugs.gentoo.org/734000
         subprocess.run(["genpack-helper", "nspawn", lower_image, "chown", "portage", "/var/cache/distfiles"], check=True)
         subprocess.run(["genpack-helper", "nspawn", lower_image, "chmod", "g+w", "/var/cache/distfiles"], check=True)
-        # install git
-        logging.info("Installing git in lower image...")
-        nspawn_opts = [
-            "--setenv=USE=-* curl ssl curl_ssl_openssl openssl" # disable all USE flags for initial git
-        ]
-        if not independent_binpkgs:
-            os.makedirs(binpkgs_dir, exist_ok=True)
-            nspawn_opts.append("--binpkgs-dir=" + binpkgs_dir)
-        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [lower_image, "emerge", "-bk", "-u", "dev-vcs/git"], check=True)
     except Exception as e:
         logging.error(f"Error setting up lower image: {e}")
         os.remove(lower_image)  # Clean up the image
@@ -225,36 +231,13 @@ def replace_portage(lower_image, portage_tarball):
         subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "Jxpf", "-", "-C", "/var/db/repos/gentoo", "--strip-components=1"], stdin=f, text=False, check=True)
     logging.info("Portage replaced successfully.")
 
-def sync_genpack_overlay(lower_image):
-    script = f"""set -e
-if [ ! -d "/var/db/repos/genpack-overlay" ]; then
-    echo "Genpack overlay not found, cloning..."
-    git clone {OVERLAY_SOURCE} /var/db/repos/genpack-overlay
-else
-    git -C /var/db/repos/genpack-overlay pull
-fi
-if [ ! -f "/etc/portage/repos.conf/genpack-overlay.conf" ]; then
-    echo "Creating repos.conf for genpack-overlay"
-    mkdir -p /etc/portage/repos.conf
-    echo -e '[genpack-overlay]\nlocation=/var/db/repos/genpack-overlay' > /etc/portage/repos.conf/genpack-overlay.conf
-    sync # somehow genpack-overlay.conf vanishes without this sync
-fi
-if [ -f /var/db/repos/genpack-overlay/.git/ORIG_HEAD ]; then
-    echo "GENPACK_OVERLAY_LAST_UPDATE: $(date -r /var/db/repos/genpack-overlay/.git/ORIG_HEAD +%s.%N)"
-elif [ -f /var/db/repos/genpack-overlay/.git/HEAD ]; then
-    echo "GENPACK_OVERLAY_LAST_UPDATE: $(date -r /var/db/repos/genpack-overlay/.git/HEAD +%s.%N)"
-fi
-"""
-    sync = subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True, stdout=subprocess.PIPE)
-    lines = sync.stdout.splitlines()
-    for line in lines:
-        if line.startswith("GENPACK_OVERLAY_LAST_UPDATE:"):
-            mtime = float(line.split(":")[1].strip())
-            logging.info(f"Genpack overlay last update time: {datetime.fromtimestamp(mtime)}")
-            return mtime
-        else:
-            print(line)  # Print other messages from the script
-    return 0
+def replace_overlay(lower_image, overlay_tarball):
+    logging.info(f"Replacing genpack-overlay in lower image: {lower_image}")
+    script = """[ -d /var/db/repos/genpack-overlay ] && echo "Renaming existing genpack-overlay directory" && mv /var/db/repos/genpack-overlay /var/db/repos/genpack-overlay.old-$(date +%Y%m%d-%H%M%S) && mkdir /var/db/repos/genpack-overlay || true"""
+    subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
+    with open(overlay_tarball, "rb") as f:
+        subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "tar", "xzf", "-", "-C", "/var/db/repos/genpack-overlay", "--strip-components=1"], stdin=f, text=False, check=True)
+    logging.info("Genpack overlay replaced successfully.")
 
 def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packages, accept_keywords, use, license, mask, env):
     if accept_keywords is None: accept_keywords = {}
@@ -631,26 +614,40 @@ def lower(variant=None, devel=False):
         logging.info("Portage tarball info has changed, downloading new tarball.")
         portage_headers = download(portage_url, portage_tarball)
         portage_is_new = True
+    
+    overlay_is_new = False
+    overlay_url = get_latest_overlay_tarball_url()
+    logging.info(f"Latest genpack overlay tarball URL: {overlay_url}")
+    overlay_headers = get_headers(overlay_url)
+    overlay_tarball = os.path.join(work_root, "genpack-overlay.tar.gz")
+    overlay_saved_headers_path = os.path.join(work_root, "genpack-overlay.tar.gz.headers")
+    overlay_saved_headers = open(overlay_saved_headers_path).read().strip() if os.path.isfile(overlay_saved_headers_path) else None
+    if overlay_saved_headers != headers_to_info(overlay_headers):
+        logging.debug(f"Overlay headers mismatch: saved={repr(overlay_saved_headers)} current={repr(headers_to_info(overlay_headers))}")
+        logging.info("Genpack overlay tarball info has changed, downloading new tarball.")
+        overlay_headers = download(overlay_url, overlay_tarball)
+        overlay_is_new = True
 
-    image_is_new = False
     if stage3_is_new or not os.path.isfile(variant.lower_image):
-        setup_lower_image(variant.lower_image, stage3_tarball, portage_tarball)
-        image_is_new = True
+        setup_lower_image(variant.lower_image, stage3_tarball, portage_tarball, overlay_tarball)
         with open(stage3_saved_headers_path, 'w') as f:
             f.write(headers_to_info(stage3_headers))
-    elif portage_is_new:
-        replace_portage(variant.lower_image, portage_tarball)
+    else:
+        if portage_is_new:
+            replace_portage(variant.lower_image, portage_tarball)
+        if overlay_is_new:
+            replace_overlay(variant.lower_image, overlay_tarball)
 
     if portage_is_new:
         with open(portage_saved_headers_path, 'w') as f:
             f.write(headers_to_info(portage_headers))
-    
-    latest_mtime = sync_genpack_overlay(variant.lower_image)
-    logging.debug(f"Latest genpack-overlay mtime: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(latest_mtime))}")
-    logging.debug(f"lower_files time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(variant.lower_files))) if os.path.exists(variant.lower_files) else 'N/A'}")
 
-    if os.path.exists(variant.lower_files) and (stage3_is_new or portage_is_new or os.path.getmtime(variant.lower_files) < latest_mtime):
-        logging.info(f"Removing old {variant.lower_files} file due to changes in stage3 or portage.")
+    if overlay_is_new:
+        with open(overlay_saved_headers_path, 'w') as f:
+            f.write(headers_to_info(overlay_headers))
+    
+    if os.path.exists(variant.lower_files) and (stage3_is_new or portage_is_new or overlay_is_new):
+        logging.info(f"Removing old {variant.lower_files} file due to changes in stage3, portage, or overlay.")
         os.remove(variant.lower_files)
 
     if os.path.exists(variant.lower_files):
