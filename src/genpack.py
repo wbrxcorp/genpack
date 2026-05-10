@@ -24,7 +24,7 @@ binpkgs_dir = os.path.join(cache_arch_dir, "binpkgs")
 download_dir = os.path.join(cache_root, "download")
 cache_overlay_dir = os.path.join(cache_root, "overlay")
 
-base_url = "http://ftp.iij.ad.jp/pub/linux/gentoo/"
+base_url = "https://distfiles.gentoo.org/"
 user_agent = "genpack/0.1"
 overlay_override = None
 independent_binpkgs = False
