@@ -249,6 +249,25 @@ genpack --overlay-override ~/projects/genpack-overlay build
 genpack archive
 ```
 
+## systemd-nspawn によるイメージ内の検査
+
+これは genpack の機能ではありませんが、`systemd-nspawn` を使うとパック済みの SquashFS イメージ内でコマンドを実行できます。vm コマンドや実機を用意せずにアーティファクトの内容を検査・操作したい場合、特にエージェントなど自動化ツールからアクセスする場合に便利です。
+
+```bash
+systemd-nspawn --image=<name>-<arch>.squashfs --volatile=overlay <command>
+```
+
+`bash` や `upper-bash` がビルド中間層（lower/upper）を対象とするのに対し、こちらは `genpack pack` で生成した最終イメージをそのまま対象とします。
+
+ただし、genpack-init は経由しないため、`system.ini` に基づく起動時の初期設定は適用されません。
+
+**一般ユーザーで実行するための条件:**
+
+- `systemd-nsresourced` および `systemd-mountfsd` のソケット/サービスが起動していること
+- systemd が BPF サポート付きでビルドされていること
+
+これらが満たされない環境では root 権限が必要になります。
+
 ## ソースリファレンス
 
 このドキュメントは以下のリポジトリのスナップショットに基づいて作成されました:
