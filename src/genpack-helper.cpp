@@ -8,7 +8,6 @@
 #include <dirent.h>
 
 #include <filesystem>
-#include <fstream>
 #include <cstring>
 #include <csignal>
 #include <functional>
@@ -162,10 +161,10 @@ void mount_loop(const std::filesystem::path& source,
     mnt_context_set_source(ctx.get(), source.c_str());
     mnt_context_set_target(ctx.get(), mountpoint.c_str());
     mnt_context_set_mflags(ctx.get(), MS_NOATIME);
-    // For ext4 build images, disable barriers and use writeback journaling for performance.
-    // These images are ephemeral build artifacts; crash consistency is not required.
+    // For ext4 build images, disable barriers for performance.
+    // These images are ephemeral build artifacts without journals; crash consistency is not required.
     const std::string opts = (fstype == "ext4" || fstype == "auto")
-        ? "loop,nobarrier,data=writeback"
+        ? "loop,nobarrier"
         : "loop";
     mnt_context_set_options(ctx.get(), opts.c_str());
 

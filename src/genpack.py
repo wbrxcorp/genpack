@@ -198,7 +198,7 @@ def setup_lower_image(lower_image, stage3_tarball, portage_tarball, overlay_tarb
         f.write(b'\x00')
     try:
         logging.info(f"Formatting filesystem on {lower_image}")
-        subprocess.run(['mkfs.ext4', lower_image], check=True)
+        subprocess.run(['mkfs.ext4', '-O', '^has_journal', lower_image], check=True)
         logging.info("Filesystem formatted successfully.")
         logging.info("Extracting stage3 to lower image...")
         subprocess.run(["genpack-helper", "stage3", lower_image, stage3_tarball], check=True)
@@ -782,7 +782,7 @@ def upper(variant):
         f.write(b'\x00')
     try:
         logging.info(f"Formatting filesystem on {variant.upper_image}")
-        subprocess.run(['mkfs.ext4', variant.upper_image], check=True)
+        subprocess.run(['mkfs.ext4', '-O', '^has_journal', variant.upper_image], check=True)
         logging.info("Filesystem formatted successfully.")
     except:
         logging.error(f"Failed to format filesystem on {variant.upper_image}.")
