@@ -37,6 +37,7 @@ user_agent = "genpack/0.1"
 overlay_override = None
 independent_binpkgs = False
 deep_depclean = False
+parallel = False
 genpack_json = None
 genpack_json_time = None
 
@@ -697,6 +698,11 @@ def lower(variant=None, devel=False):
     if overlay_override is not None:
         nspawn_opts.append(f"--genpack-overlay-dir={overlay_override}")
 
+    emerge_parallel_opts = []
+    if parallel:
+        nproc = os.cpu_count() or 1
+        emerge_parallel_opts = [f"--jobs={nproc}", f"--load-average={nproc}"]
+
     # circular dependency breaker
     if "circulardep-breaker" in genpack_json:
         raise ValueError("Use circulardep_breaker instead of circulardep-breaker in genpack.json")
@@ -711,7 +717,7 @@ def lower(variant=None, devel=False):
                 circulardep_breaker_nspawn_opts.append(f"--setenv=USE={circulardep_breaker_use}")
             else:
                 logging.warning("circulardep_breaker use is not set, proceeding without setting USE flags.")
-            emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-u", "--keep-going"]
+            emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-u", "--keep-going"] + emerge_parallel_opts
             if len(binpkg_excludes) > 0:
                 emerge_cmd += ["--usepkg-exclude", " ".join(binpkg_excludes)]
                 emerge_cmd += ["--buildpkg-exclude", " ".join(binpkg_excludes)]
@@ -720,7 +726,7 @@ def lower(variant=None, devel=False):
             subprocess.run(["genpack-helper", "nspawn"] + circulardep_breaker_nspawn_opts + [variant.lower_image] + emerge_cmd, check=True)
 
     logging.info("Emerging all packages...")
-    emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-uDN", "--keep-going"]
+    emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-uDN", "--keep-going"] + emerge_parallel_opts
     if len(binpkg_excludes) > 0:
         emerge_cmd += ["--usepkg-exclude", " ".join(binpkg_excludes)]
         emerge_cmd += ["--buildpkg-exclude", " ".join(binpkg_excludes)]
@@ -730,7 +736,7 @@ def lower(variant=None, devel=False):
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "rebuild-kernel-modules-if-necessary"], check=True)
 
     logging.info("Rebuilding preserved packages...")
-    emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y"]
+    emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y"] + emerge_parallel_opts
     if len(binpkg_excludes) > 0:
         emerge_cmd += ["--usepkg-exclude", " ".join(binpkg_excludes)]
         emerge_cmd += ["--buildpkg-exclude", " ".join(binpkg_excludes)]
@@ -738,7 +744,7 @@ def lower(variant=None, devel=False):
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image] + emerge_cmd, check=True)
 
     logging.info("Unmerging masked packages...")
-    subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "unmerge-masked-packages"], check=True)
+    subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "genpack-unmerge-masked-packages"] + emerge_parallel_opts, check=True)
 
     logging.info("Cleaning up...")
     cleanup_cmd = "emerge --depclean"
@@ -1038,6 +1044,7 @@ if __name__ == "__main__":
     parser.add_argument("--overlay-override", default=None, help="Directory to override genpack-overlay")
     parser.add_argument("--independent-binpkgs", action="store_true", help="Use independent binpkgs, do not use shared one")
     parser.add_argument("--deep-depclean", action="store_true", help="Perform deep depclean, removing all non-runtime packages"  )
+    parser.add_argument("--parallel", action="store_true", help="Build multiple packages in parallel (--jobs and --load-average set to CPU count)")
     parser.add_argument("--compression", choices=["gzip", "xz", "lzo", "none"], default=None, help="Compression type for the final SquashFS image")
     parser.add_argument("--devel", action="store_true", help="Generate development image, if supported by genpack.json")
     parser.add_argument("--variant", default=None, help="Variant to use from genpack.json, if supported")
@@ -1082,6 +1089,7 @@ if __name__ == "__main__":
 
     independent_binpkgs = args.independent_binpkgs or genpack_json.get("independent_binpkgs", False)
     deep_depclean = args.deep_depclean
+    parallel = args.parallel
 
     variant = Variant(args.variant or genpack_json.get("default_variant", None))
     if variant.name is not None:
