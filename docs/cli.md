@@ -70,7 +70,7 @@ genpack lower
 10. 全パッケージを emerge
 11. カーネルモジュールの再ビルド
 12. depclean, eclean によるクリーンアップ
-13. Upper 層用のファイルリスト (`lower.files`) を生成
+13. ビルド完了マーカー (`lower.done`) を書き込む
 
 Lower 層の再ビルドが必要かどうかは `genpack.json5` と Portage 関連サブディレクトリ（`savedconfig/`, `patches/`, `kernel/`, `env/`, `overlay/`）のタイムスタンプで判定されます。
 
@@ -86,14 +86,14 @@ genpack upper
 
 処理の流れ:
 
-1. Upper 層用の ext4 イメージ (`upper.img`) を作成
-2. Lower 層から `lower.files` に記載されたファイルをコピー
-3. パッケージスクリプトを実行
-4. グループとユーザーを作成
-5. `files/` ディレクトリの内容をルートにコピー
-6. `files/build.d/` のビルドスクリプトを実行
-7. `setup_commands` を実行
-8. systemd サービスを有効化
+1. Upper 層用の ext4 イメージ (`upper.img`) を新規作成（毎回クリーンビルド）
+2. パッケージスクリプトを実行し `/.genpack/` メタデータを生成 (`genpack-exec-package-scripts`)
+3. グループとユーザーを作成
+4. `files/` ディレクトリの内容をルートにコピー
+5. `files/build.d/` のビルドスクリプトを実行
+6. `setup_commands` を実行
+7. systemd サービスを有効化
+8. overlayfs の copy-up でランタイムパッケージのファイルを Upper 層へ転送 (`genpack-copyup`)
 
 ### pack
 
@@ -172,7 +172,7 @@ work/
 ├── portage.tar.xz.headers      # キャッシュ検証用ヘッダ
 └── {arch}/
     ├── lower.img               # Lower 層ファイルシステム (デフォルト 128 GiB)
-    ├── lower.files             # Upper 層にコピーするファイルリスト
+    ├── lower.done              # lower ビルド完了マーカー（タイムスタンプで再ビルド要否を判定）
     ├── upper.img               # Upper 層ファイルシステム (デフォルト 20 GiB)
     ├── stage3.tar.xz           # stage3 tarball (キャッシュ)
     └── stage3.tar.xz.headers   # キャッシュ検証用ヘッダ

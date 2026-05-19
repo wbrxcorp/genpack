@@ -161,8 +161,13 @@ void mount_loop(const std::filesystem::path& source,
     mnt_context_set_fstype_pattern(ctx.get(), fstype.c_str());
     mnt_context_set_source(ctx.get(), source.c_str());
     mnt_context_set_target(ctx.get(), mountpoint.c_str());
-    mnt_context_set_mflags(ctx.get(), MS_RELATIME);
-    mnt_context_set_options(ctx.get(), "loop");
+    mnt_context_set_mflags(ctx.get(), MS_NOATIME);
+    // For ext4 build images, disable barriers and use writeback journaling for performance.
+    // These images are ephemeral build artifacts; crash consistency is not required.
+    const std::string opts = (fstype == "ext4" || fstype == "auto")
+        ? "loop,nobarrier,data=writeback"
+        : "loop";
+    mnt_context_set_options(ctx.get(), opts.c_str());
 
     auto rst = mnt_context_mount(ctx.get());
     auto status = mnt_context_get_status(ctx.get());

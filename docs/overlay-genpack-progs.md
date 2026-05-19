@@ -14,11 +14,18 @@
 
 | コマンド | 説明 |
 |---|---|
-| `list-pkg-files` | Portage パッケージの依存関係を再帰的に解決し、イメージに含めるファイル一覧を生成する |
-| `exec-package-scripts-and-generate-metadata` | パッケージ固有のポストインストールスクリプトを実行し、`/.genpack/` 以下にメタデータを生成する |
+| `genpack-exec-package-scripts` | パッケージ固有のポストインストールスクリプトを実行し、`/.genpack/` 以下にメタデータを生成する |
+| `genpack-copyup` | overlayfs の copy-up を利用してランタイムパッケージのファイルを Upper 層へ転送する |
 | `execute-artifact-build-scripts` | アーティファクト固有のビルドスクリプト (`/build`, `/build.d/`) を実行する |
 | `recursive-touch` | ELF バイナリとスクリプトの依存関係を再帰的に解析し、atime を更新する。initramfs 用ファイルリストの出力にも使用 |
 | `rebuild-kernel-modules-if-necessary` | カーネルモジュールの再ビルドが必要な場合に `emerge @module-rebuild` を実行する |
+
+### 後方互換ツール（旧 genpack 向け）
+
+| コマンド | 説明 |
+|---|---|
+| `list-pkg-files` | ランタイムパッケージのファイル一覧を生成する（旧 genpack が使用） |
+| `exec-package-scripts-and-generate-metadata` | パッケージスクリプト実行とメタデータ生成を行う（旧 genpack が使用） |
 
 ### ダウンロードユーティリティ
 
@@ -57,20 +64,19 @@
 | `app-misc/figlet` | ASCII アートテキスト生成 |
 | `sys-fs/squashfs-tools[lz4,lzma,lzo,xattr,zstd]` | SquashFS イメージの作成・展開 |
 | `app-admin/eclean-kernel` | 古いカーネルの自動削除 |
+| `dev-python/tqdm` | プログレスバーライブラリ（`genpack-copyup` で使用） |
 
 ## 各コマンドの詳細
 
-### list-pkg-files
+### genpack-exec-package-scripts
 
-genpack イメージに含めるファイルを決定するコアツール。Portage の Python API を使用して `@profile`、`@genpack-runtime`（およびオプションで `@genpack-devel`）パッケージセットの依存関係を再帰的に解決し、対象ファイルの一覧を出力する。
+Portage の Python API を使用して `@profile`、`@genpack-runtime`（およびオプションで `@genpack-devel`）パッケージセットの依存関係を再帰的に解決し、パッケージごとのポストインストールスクリプト (`/usr/lib/genpack/package-scripts/<pkgname>/`) を実行する。その後、`/.genpack/` ディレクトリにメタデータを生成する。
 
 - `genpack-ignore` eclass を持つパッケージはスキップされる
 - 非 devel モードでは man ページ、ドキュメント、ヘッダファイル等を除外
-- パッケージ依存関係グラフを `/.genpack/_pkgs_with_deps.pkl` に保存し、後続の `exec-package-scripts-and-generate-metadata` で再利用する
+- 共有ライブラリモジュール `genpack_pkg` に依存する
 
-### exec-package-scripts-and-generate-metadata
-
-`list-pkg-files` が保存した依存関係データを読み込み、パッケージごとのポストインストールスクリプト (`/usr/lib/genpack/package-scripts/<pkgname>/`) を実行する。その後、`/.genpack/` ディレクトリに以下のメタデータファイルを生成する：
+`/.genpack/` に生成されるメタデータ：
 
 - `arch` — システムアーキテクチャ
 - `profile` — genpack プロファイル名
@@ -78,6 +84,15 @@ genpack イメージに含めるファイルを決定するコアツール。Por
 - `variant` — バリアント名
 - `timestamp.commit` — Portage ツリーのコミットタイムスタンプ
 - `packages` — インストール済みパッケージ一覧（USE フラグ、説明等を含む）
+
+### genpack-copyup
+
+overlayfs の copy-up 機構を利用して、ランタイムパッケージのファイルを Upper 層へ転送する。`genpack_pkg` モジュールを使用してランタイムパッケージとそのファイル一覧を列挙し、各ファイルに対して `utime()` を呼び出すことでカーネルの copy-up をトリガーする。
+
+- `mount --bind / <raw_root>` で Lower 層のファイルシステムに直接アクセスし、nspawn が仮想化する `/dev` 等を正確に処理する
+- stage3 ブートストラップで作成されたがパッケージに所有されないトップレベルディレクトリ（`/bin`, `/sbin`, `/lib`, `/lib64` 等）も明示的に含める
+- `/dev/` 以下は再帰的にすべて copy-up 対象とする
+- `tqdm` でプログレスバーを表示する
 
 ### execute-artifact-build-scripts
 
@@ -111,10 +126,18 @@ GitHub API を使用して最新リリースのアセットを取得し、正規
 
 一時的な MySQL サーバーを起動し、指定されたコマンドを実行した後にシャットダウンするラッパーツール。初回起動時にはデータディレクトリの初期化とタイムゾーンデータのロードを行う。ネットワーク接続は無効化され、ローカルソケットのみで通信する。ビルド時のデータベースマイグレーション実行に使用される。
 
+### list-pkg-files（後方互換）
+
+旧 genpack 向けの後方互換ツール。`genpack-exec-package-scripts` に置き換えられた。ランタイムパッケージのファイル一覧を生成し、パッケージ依存関係グラフを `/.genpack/_pkgs_with_deps.pkl` に保存する。現行の genpack は使用しない。
+
+### exec-package-scripts-and-generate-metadata（後方互換）
+
+旧 genpack 向けの後方互換ツール。`genpack-exec-package-scripts` に置き換えられた。`list-pkg-files` が保存した依存関係データを読み込み、パッケージスクリプトの実行とメタデータ生成を行う。現行の genpack は使用しない。
+
 ## genpack-ignore eclass
 
-`genpack-progs` の ebuild は `genpack-ignore` eclass を継承している。これにより、`list-pkg-files` がイメージに含めるファイルを収集する際にこのパッケージ自体はスキップされる。ビルドツールはビルド環境（lower レイヤー）で使用されるが、最終的なランタイムイメージ（upper レイヤー）には含まれない。
+`genpack-progs` の ebuild は `genpack-ignore` eclass を継承している。これにより、`genpack-exec-package-scripts` および `genpack-copyup` がイメージに含めるファイルを収集する際にこのパッケージ自体はスキップされる。ビルドツールはビルド環境（lower レイヤー）で使用されるが、最終的なランタイムイメージ（upper レイヤー）には含まれない。
 
 ## ソースリファレンス
 
-- [genpack/genpack-progs ebuild](https://github.com/wbrxcorp/genpack-overlay/tree/7bc4ad0/genpack/genpack-progs) (7bc4ad0)
+- [genpack/genpack-progs ebuild](https://github.com/wbrxcorp/genpack-overlay/tree/b0abbd7/genpack/genpack-progs) (b0abbd7)

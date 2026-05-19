@@ -12,6 +12,14 @@ import requests # dev-python/requests
 DEFAULT_LOWER_SIZE_IN_GIB = 128  # Default max size of lower image in GiB
 DEFAULT_UPPER_SIZE_IN_GIB = 20  # Default max size of upper image in GiB
 
+# Map terminal types that nspawn containers don't have terminfo for to compatible alternatives.
+TERM_COMPAT_MAP = {
+    "xterm-ghostty": "xterm-256color",
+}
+_term = os.environ.get("TERM", "")
+if _term in TERM_COMPAT_MAP:
+    os.environ["TERM"] = TERM_COMPAT_MAP[_term]
+
 debug = False  # Set to True to enable debug output
 arch = os.uname().machine
 
@@ -38,7 +46,7 @@ class Variant:
     def __init__(self, name):
         self.name = name
         self.lower_image = os.path.join(work_dir, "lower.img") if self.name is None else os.path.join(work_dir, "lower-%s.img" % self.name)
-        self.lower_files = os.path.join(work_dir, "lower.files") if self.name is None else os.path.join(work_dir, "lower-%s.files" % self.name)
+        self.lower_done = os.path.join(work_dir, "lower.done") if self.name is None else os.path.join(work_dir, "lower-%s.done" % self.name)
         self.upper_image = os.path.join(work_dir, "upper.img") if self.name is None else os.path.join(work_dir, "upper-%s.img" % self.name)
 
 LockMode = Literal["shared", "exclusive"]
@@ -646,11 +654,11 @@ def lower(variant=None, devel=False):
         with open(overlay_saved_headers_path, 'w') as f:
             f.write(headers_to_info(overlay_headers))
     
-    if os.path.exists(variant.lower_files) and (stage3_is_new or portage_is_new or overlay_is_new):
-        logging.info(f"Removing old {variant.lower_files} file due to changes in stage3, portage, or overlay.")
-        os.remove(variant.lower_files)
+    if os.path.exists(variant.lower_done) and (stage3_is_new or portage_is_new or overlay_is_new):
+        logging.info(f"Removing old {variant.lower_done} file due to changes in stage3, portage, or overlay.")
+        os.remove(variant.lower_done)
 
-    if os.path.exists(variant.lower_files):
+    if os.path.exists(variant.lower_done):
         logging.info("Lower image is up-to-date, skipping.")
         return
 
@@ -743,37 +751,8 @@ def lower(variant=None, devel=False):
         cleanup_cmd += " -d" # with independent binpkgs, we can clean up binpkgs more aggressively
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "sh", "-c", cleanup_cmd], check=True)
 
-    files = []
-    lib64_exists = None
-
-    # check if lib64 exists
-    lib64_exists = subprocess.check_call(["genpack-helper", "nspawn", variant.lower_image, "[" , "-d", "/lib64", "]"]) == 0
-    nspawn_opts = []
-    if overlay_override is not None:
-        nspawn_opts.append(f"--genpack-overlay-dir={overlay_override}")
-    list_pkg_files = subprocess.Popen(["genpack-helper", "nspawn", variant.lower_image] + nspawn_opts + ["list-pkg-files"], stdout=subprocess.PIPE, text=True, bufsize=1)
-    try:
-        for line in list_pkg_files.stdout:
-            line = line.rstrip('\n')
-            if not line or line.startswith('#'): continue
-            #else
-            if not os.path.isabs(line):
-                raise ValueError(f"list-pkg-files returned non-absolute path: {line}")
-            #else
-            files.append(line.lstrip('/'))  # remove leading slash
-    finally:
-        return_code = list_pkg_files.wait()
-        if return_code != 0:
-            raise subprocess.CalledProcessError(return_code, list_pkg_files.args)
-
-    with open(variant.lower_files, "w") as f:
-        for file in ["bin", "sbin", "lib", "usr/sbin", "run", "proc", "sys", "root", "home", "tmp", "mnt",
-                     "dev", "dev/console", "dev/null"]:
-            files.append(file)
-        if lib64_exists:
-            files.append("lib64")
-        for file in sorted(files):
-            f.write(file + '\n')
+    with open(variant.lower_done, "w") as f:
+        f.write("lower build complete\n")
 
 def bash(variant, command=None):
     nspawn_opts = []
@@ -791,49 +770,54 @@ def bash(variant, command=None):
 
 def upper(variant):
     logging.info("Processing upper layer...")
-    if not os.path.isfile(variant.lower_image) or not os.path.exists(variant.lower_files):
-        raise FileNotFoundError(f"Lower image {variant.lower_image} or lower files {variant.lower_files} does not exist. Please run 'genpack lower' first.")
+    if not os.path.isfile(variant.lower_image) or not os.path.exists(variant.lower_done):
+        raise FileNotFoundError(f"Lower image {variant.lower_image} or lower completion marker {variant.lower_done} does not exist. Please run 'genpack lower' first.")
 
-    # create upper image if it does not exist
-    if not os.path.isfile(variant.upper_image):
-        with open(variant.upper_image, "wb") as f:
-            f.seek(DEFAULT_UPPER_SIZE_IN_GIB * 1024 * 1024 * 1024 - 1)
-            f.write(b'\x00')
-        try:
-            logging.info(f"Formatting filesystem on {variant.upper_image}")
-            subprocess.run(['mkfs.ext4', variant.upper_image], check=True)
-            logging.info("Filesystem formatted successfully.")
-        except:
-            logging.error(f"Failed to format filesystem on {variant.upper_image}.")
-            os.remove(variant.upper_image)
-            raise
+    # always recreate upper image fresh
+    if os.path.isfile(variant.upper_image):
+        logging.info(f"Removing existing upper image {variant.upper_image} for fresh rebuild.")
+        os.remove(variant.upper_image)
+    with open(variant.upper_image, "wb") as f:
+        f.seek(DEFAULT_UPPER_SIZE_IN_GIB * 1024 * 1024 * 1024 - 1)
+        f.write(b'\x00')
+    try:
+        logging.info(f"Formatting filesystem on {variant.upper_image}")
+        subprocess.run(['mkfs.ext4', variant.upper_image], check=True)
+        logging.info("Filesystem formatted successfully.")
+    except:
+        logging.error(f"Failed to format filesystem on {variant.upper_image}.")
+        os.remove(variant.upper_image)
+        raise
 
-    logging.info("Copying files from lower image to upper image...")
-    with open(variant.lower_files, "r") as f:
-        genpack_helper = ["genpack-helper"]
-        if debug: genpack_helper.append("-g")
-        subprocess.run(genpack_helper + ["copy", variant.lower_image, variant.upper_image, "--dst-dir=upper"], 
-                       stdin=f, check=True)
-
-    logging.info("Executing package scripts and generating metadata...")
     os.makedirs(download_dir, exist_ok=True)
     nspawn_opts = []
     if overlay_override is not None:
         nspawn_opts.append(f"--genpack-overlay-dir={overlay_override}")
+
+    # build env opts shared across nspawn calls
+    env_opts = ["-E", f"ARTIFACT={genpack_json['name']}"]
+    profile = genpack_json.get("profile", None)
+    if profile:
+        env_opts += ["-E", f"PROFILE={profile}"]
+    if variant.name is not None:
+        env_opts += ["-E", f"VARIANT={variant.name}"]
+
+    # 1. execute package scripts and generate /.genpack/ metadata (must run before artifact scripts)
+    logging.info("Executing package scripts and generating metadata...")
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [
                     f"--download-dir={download_dir}",
                     f"--overlay-image={variant.upper_image}:upper",
-                    "-E", f"ARTIFACT={genpack_json['name']}",
-                    variant.lower_image, "exec-package-scripts-and-generate-metadata"],
+                    *env_opts,
+                    variant.lower_image, "genpack-exec-package-scripts"],
                     check=True)
 
-    # merge genpack.json
+    # merge genpack.json for groups/users/services
     merged_genpack_json = {}
     merge_genpack_json(merged_genpack_json, genpack_json, ["genpack.json"], [
         "users","groups", "services", "arch", "variants"
     ], variant)
 
-    # create groups
+    # 2. create groups
     groups = merged_genpack_json.get("groups", [])
     for group in groups:
         name = group if isinstance(group, str) else None
@@ -849,9 +833,9 @@ def upper(variant):
         if gid is not None: groupadd_cmd += ["-g", str(gid)]
         groupadd_cmd.append(name)
         logging.info("Creating group %s..." % name)
-        subprocess.run(["genpack-helper", "nspawn", f"--overlay-image={variant.upper_image}:upper", variant.lower_image] + groupadd_cmd, check=True)
+        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [f"--overlay-image={variant.upper_image}:upper", variant.lower_image] + groupadd_cmd, check=True)
 
-    # create users
+    # 3. create users
     users = merged_genpack_json.get("users", [])
     for user in users:
         name = user if isinstance(user, str) else None
@@ -886,9 +870,9 @@ def upper(variant):
         if empty_password: useradd_cmd += ["-p", ""]
         useradd_cmd.append(name)
         logging.info("Creating user %s..." % name)
-        subprocess.run(["genpack-helper", "nspawn", f"--overlay-image={variant.upper_image}:upper", variant.lower_image] + useradd_cmd, check=True)
+        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [f"--overlay-image={variant.upper_image}:upper", variant.lower_image] + useradd_cmd, check=True)
 
-    # copy contents from files directory to upper image
+    # 4. copy contents from files directory to upper image + execute artifact build scripts
     script = """set -e
 if [ -d /mnt/host/files ]; then
     echo "Copying files from /mnt/host/files to upper image..."
@@ -896,18 +880,15 @@ if [ -d /mnt/host/files ]; then
 fi
 execute-artifact-build-scripts
 touch /usr""" # see https://www.freedesktop.org/software/systemd/man/systemd-update-done.service.html
-    nspawn_opts = [
-        "-E", f"ARTIFACT={genpack_json['name']}",
-        "--console=pipe", 
-        f"--download-dir={download_dir}",
-        f"--overlay-image={variant.upper_image}:upper", variant.lower_image,         
-    ]
-    if variant.name is not None:
-        nspawn_opts += ["-E", f"VARIANT={variant.name}"]
-    subprocess.run(["genpack-helper", "nspawn", 
-                    *nspawn_opts, "sh"], 
+    subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [
+                    *env_opts,
+                    "--console=pipe",
+                    f"--download-dir={download_dir}",
+                    f"--overlay-image={variant.upper_image}:upper", variant.lower_image,
+                    "sh"],
                    input=script, text=True, check=True)
 
+    # 5. setup_commands
     if "setup_commands" in genpack_json:
         setup_commands = genpack_json["setup_commands"]
         if not isinstance(setup_commands, list):
@@ -915,20 +896,27 @@ touch /usr""" # see https://www.freedesktop.org/software/systemd/man/systemd-upd
         for cmd in setup_commands:
             if isinstance(cmd, str):
                 logging.info(f"Executing setup command: {cmd}")
-                subprocess.run(["genpack-helper", "nspawn", 
-                                f"--overlay-image={variant.upper_image}:upper", 
+                subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [
+                                f"--overlay-image={variant.upper_image}:upper",
                                 f"--download-dir={download_dir}",
-                                "-E", f"ARTIFACT={genpack_json['name']}",
+                                *env_opts,
                                 variant.lower_image, "sh", "-c", cmd], check=True)
             elif isinstance(cmd, dict):
                 pass # TBD: support more complex command with options
             else:
                 raise ValueError("setup_commands must be a list of strings or dicts")
 
-    # enable services
+    # 6. enable services
     services = merged_genpack_json.get("services", [])
     if len(services) > 0:
-        subprocess.run(["genpack-helper", "nspawn", f"--overlay-image={variant.upper_image}:upper", variant.lower_image, "systemctl", "enable"] + services, check=True)
+        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [f"--overlay-image={variant.upper_image}:upper", variant.lower_image, "systemctl", "enable"] + services, check=True)
+
+    # 7. copy-up all runtime package files via overlayfs (must run last)
+    logging.info("Triggering overlayfs copy-up for runtime package files...")
+    subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [
+                    f"--overlay-image={variant.upper_image}:upper",
+                    variant.lower_image, "genpack-copyup"],
+                    check=True)
 
 def upper_bash(variant):
     if not os.path.isfile(variant.upper_image):
@@ -939,8 +927,8 @@ def upper_bash(variant):
 def pack(variant, compression=None):
     if not os.path.isfile(variant.lower_image):
         raise FileNotFoundError(f"Lower image {variant.lower_image} does not exist. Please run 'lower' first.")
-    if not os.path.isfile(variant.lower_files):
-        raise FileNotFoundError(f"Lower files {variant.lower_files} does not exist. Please run 'lower' first.")
+    if not os.path.isfile(variant.lower_done):
+        raise FileNotFoundError(f"Lower completion marker {variant.lower_done} does not exist. Please run 'lower' first.")
     if not os.path.isfile(variant.upper_image):
         raise FileNotFoundError(f"Upper layer image {variant.upper_image} does not exist. Please run 'upper' first.")
     #else
@@ -1117,28 +1105,28 @@ if __name__ == "__main__":
         raise ValueError("upper-clean is not implemented yet, use 'upper' and then remove upper directory manually.")
     #else
 
-    def is_lower_files_outdated():
-        if not os.path.exists(variant.lower_files): return False
+    def is_lower_outdated():
+        if not os.path.exists(variant.lower_done): return False
         #else
-        lower_files_mtime = os.path.getmtime(variant.lower_files)
+        lower_done_mtime = os.path.getmtime(variant.lower_done)
         latest_mtime = get_latest_mtime(genpack_json_time, "savedconfig", "patches", "kernel", "env", "overlay")
-        if lower_files_mtime < latest_mtime:
-            logging.info(f"Lower files {variant.lower_files} is outdated, rebuilding lower layer.")
+        if lower_done_mtime < latest_mtime:
+            logging.info(f"Lower completion marker {variant.lower_done} is outdated, rebuilding lower layer.")
             return True
         world_mtime = subprocess.run(["genpack-helper", "nspawn", "--console=pipe", variant.lower_image, "stat", "-c", "%Y", "/var/lib/portage/world"], capture_output=True, text=True)
         if world_mtime.returncode != 0:
             logging.error("Failed to get world file mtime. rebuilding lower layer.")
             return True
         #else
-        if lower_files_mtime < int(world_mtime.stdout.strip()):
-            logging.info(f"Lower files {variant.lower_files} is older than world file, rebuilding lower layer.")
+        if lower_done_mtime < int(world_mtime.stdout.strip()):
+            logging.info(f"Lower completion marker {variant.lower_done} is older than world file, rebuilding lower layer.")
             return True
         #else
         return False
 
     if args.action in ["build", "lower"]:
-        if is_lower_files_outdated() or (args.action == "lower" and os.path.exists(variant.lower_files)):
-            os.remove(variant.lower_files)
+        if is_lower_outdated() or (args.action == "lower" and os.path.exists(variant.lower_done)):
+            os.remove(variant.lower_done)
         lower(variant, args.devel)
     if args.action in ["build", "upper"]:
         upper(variant)
