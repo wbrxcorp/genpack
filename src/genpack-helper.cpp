@@ -352,6 +352,23 @@ int nspawn(const std::filesystem::path& lower_img,
     return fork_and_exec(nspawn_cmdline);
 }
 
+void copyup_dev(const std::filesystem::path& lower_img,
+                const std::filesystem::path& upper_img,
+                const std::filesystem::path& upper_dir)
+{
+    TempDir lower_dir, upper_mnt;
+    mount_loop(lower_img, lower_dir.path(), "ext4");
+    mount_loop(upper_img, upper_mnt.path(), "ext4");
+
+    auto src = lower_dir.path() / "dev";
+    auto dst = upper_mnt.path() / upper_dir / "dev";
+    std::filesystem::create_directories(dst);
+
+    if (fork_and_exec({"cp", "-a", src.string() + "/.", dst.string()}) != 0) {
+        throw std::runtime_error("cp -a failed for /dev copy-up");
+    }
+}
+
 int copy(const std::filesystem::path& src_img, const std::filesystem::path& dst_img, const std::filesystem::path& dst_dir = "")
 {
     must_be_owned_by_original_user(src_img);
@@ -459,6 +476,7 @@ int main(int argc, const char* argv[])
     argparse::ArgumentParser stage3("stage3", "Extract a stage3 archive into a lower image");
     argparse::ArgumentParser nspawn("nspawn", "Run a command in a lower image using systemd-nspawn");
     argparse::ArgumentParser copy("copy", "Copy files between two images according to filelist from stdin");
+    argparse::ArgumentParser copyup_dev("copyup-dev", "Copy /dev from lower image into upper image's upper/ directory");
 
     std::map<std::string,std::tuple<argparse::ArgumentParser&,std::function<void(argparse::ArgumentParser&)>,std::function<int(const argparse::ArgumentParser&)>>> subcommands = {
         {"ping", {
@@ -579,7 +597,29 @@ int main(int argc, const char* argv[])
                 auto dst_dir = argparser.get<std::string>("--dst-dir");
                 return ::copy(src_img, dst_img, dst_dir);
             }
-
+        }},
+        {"copyup-dev", {
+            std::ref(copyup_dev),
+            [](argparse::ArgumentParser& argparser) {
+                argparser.add_argument("lower_img", "The lower image file to copy /dev from.")
+                    .required()
+                    .help("Path to the lower image file.");
+                argparser.add_argument("upper_img_and_dir",
+                    "The upper image file and subdirectory to copy /dev into (image:dir).")
+                    .required()
+                    .help("Path to the upper image file and subdirectory, e.g. upper.img:upper.");
+            },
+            [](const argparse::ArgumentParser& argparser) {
+                auto lower_img = argparser.get<std::string>("lower_img");
+                auto upper_img_and_dir = argparser.get<std::string>("upper_img_and_dir");
+                auto pos = upper_img_and_dir.find(':');
+                if (pos == std::string::npos)
+                    throw std::invalid_argument("upper_img_and_dir must be in the format <image>:<dir>");
+                ::copyup_dev(lower_img,
+                             upper_img_and_dir.substr(0, pos),
+                             upper_img_and_dir.substr(pos + 1));
+                return 0;
+            }
         }}
     };
 

@@ -924,6 +924,11 @@ touch /usr""" # see https://www.freedesktop.org/software/systemd/man/systemd-upd
                     variant.lower_image, "genpack-copyup"],
                     check=True)
 
+    # 8. copy /dev from lower into upper (device nodes cannot be copy-upped inside
+    #    nspawn user namespace due to mknod restrictions; done on host side instead)
+    logging.info("Copying /dev from lower image to upper image...")
+    subprocess.run(["genpack-helper", "copyup-dev", variant.lower_image, f"{variant.upper_image}:upper"], check=True)
+
 def upper_bash(variant):
     if not os.path.isfile(variant.upper_image):
         raise FileNotFoundError(f"Upper layer image {variant.upper_image} does not exist. Please run 'upper' first")
