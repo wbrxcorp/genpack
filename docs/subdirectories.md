@@ -195,8 +195,8 @@ files/
 files/
 ├── build.d/
 │   ├── enable-automatic-login
-│   ├── enable-noto-cjk.sh
-│   └── enable-pipewire-for-all-users
+│   ├── obs-multi-rtmp.sh
+│   └── xmrig.sh
 └── etc/
     ├── polkit-1/rules.d/
     └── xdg/autostart/
@@ -212,6 +212,61 @@ files/
     └── sysctl.d/
         └── tuning.conf
 ```
+
+## genpack-stencils — 再利用可能な部品集
+
+genpack にはアーティファクト間で構成要素を共有するインポート機能がないため、共通の設定や処理は各アーティファクトに複製して使います。[genpack-stencils](https://github.com/shimarin/genpack-stencils) はその際の**参照元**となる部品を、テーマ（機能単位）ごとにまとめたリポジトリです。
+
+### 構造
+
+テーマごとにディレクトリを設け、その下に通常のアーティファクトと同じ構造で部品を配置します:
+
+```
+<theme-name>/
+├── genpack.json5   # このテーマが追加・変更するキーのフラグメント
+└── files/
+    └── build.d/
+        └── <script>.sh
+```
+
+### genpack.json5 フラグメント
+
+各テーマの `genpack.json5` は**JSON5 としてパース可能**ですが、そのテーマに関係するキーだけを記述した断片です。ファイル冒頭のコメントに用途・依存・競合するキーが記載されています:
+
+```json5
+// theme: xmrig
+// xmrigバイナリをGitHubの最新リリースからダウンロードして /usr/bin/ にインストールする
+// 依存: なし
+// 競合するキー: なし
+{
+}
+```
+
+### 利用方法
+
+1. 目的のテーマのディレクトリを参照する
+2. `genpack.json5` フラグメントの内容をアーティファクトの `genpack.json5` に手動でマージする
+3. 必要なスクリプトを `files/build.d/` にコピーする
+
+スクリプトを取り込む際は出典を `ref:` コメントで残してください:
+
+```sh
+#!/bin/sh
+# ref: xmrig/files/build.d/xmrig.sh
+```
+
+これにより `rg 'ref: xmrig'` でそのテーマを取り込んでいるアーティファクトを一覧できます。
+
+### genpack/base の package-scripts との関係
+
+よく使われるセットアップ処理の中には、特定の Portage パッケージがインストールされたときに自動実行される **package-script** として genpack-overlay の `genpack/base` に組み込まれているものがあります。これらはアーティファクト側で `build.d/` スクリプトを用意する必要がありません:
+
+| 処理 | トリガーパッケージ |
+|---|---|
+| Noto CJK フォントの fontconfig 有効化 | `media-fonts/noto-cjk` |
+| PipeWire の全ユーザー向け有効化 | `gnome-base/gnome` |
+| Apache mod_php の有効化 | `dev-lang/php`（`70_mod_php.conf` が存在する場合） |
+| Apache SSL 証明書の生成 | `www-servers/apache` |
 
 ## kernel/ — カーネル設定
 
