@@ -6,7 +6,7 @@ all: src/genpack-helper.bin src/genpack.py
 
 src/genpack-helper.bin: src/genpack-helper.cpp
 	@echo "Compiling genpack-helper.cpp to genpack-helper.bin"
-	g++ -std=c++20 -o $@ $< -lmount
+	g++ -std=c++20 -o $@ $< -lmount -lblkid
 
 install: all
 	@echo "Installing genpack-helper binary to $(DESTDIR)$(PREFIX)/bin"

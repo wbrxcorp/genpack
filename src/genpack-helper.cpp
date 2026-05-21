@@ -8,11 +8,14 @@
 #include <dirent.h>
 
 #include <filesystem>
+#include <memory>
+#include <set>
 #include <cstring>
 #include <csignal>
 #include <functional>
 
 #include <libmount/libmount.h>
+#include <blkid/blkid.h>
 
 #include <argparse/argparse.hpp>
 
@@ -283,6 +286,7 @@ std::string escape_colon(const std::filesystem::path& path) {
 struct NspawnOptions {
     std::map<std::string, std::string> env_vars;
     std::optional<std::string> console;
+    std::optional<std::string> volatile_mode;
     std::optional<std::filesystem::path> genpack_overlay_dir;
     std::optional<std::filesystem::path> binpkgs_dir;
     std::optional<std::filesystem::path> download_dir;
@@ -294,6 +298,20 @@ static uint64_t phys_bytes(void){
     long pages = sysconf(_SC_PHYS_PAGES);
     long page  = sysconf(_SC_PAGESIZE);
     return (pages > 0 && page > 0) ? (uint64_t)pages * (uint64_t)page : 0;
+}
+
+bool is_inherently_readonly_image(const std::filesystem::path& path)
+{
+    blkid_probe pr = blkid_new_probe_from_filename(path.c_str());
+    if (!pr) return false;
+    std::shared_ptr<void> guard(pr, [](void* p){ blkid_free_probe((blkid_probe)p); });
+    if (blkid_do_safeprobe(pr) != 0) return false;
+    const char* type = nullptr;
+    if (blkid_probe_lookup_value(pr, "TYPE", &type, nullptr) != 0 || !type) return false;
+    static const std::set<std::string> ro_types = {
+        "squashfs", "erofs", "iso9660", "cramfs", "romfs"
+    };
+    return ro_types.count(type) > 0;
 }
 
 int nspawn(const std::filesystem::path& lower_img,
@@ -332,6 +350,16 @@ int nspawn(const std::filesystem::path& lower_img,
     }
     if (options.console) {
         nspawn_cmdline.push_back("--console=" + *options.console);
+    }
+    std::optional<std::string> effective_volatile = options.volatile_mode;
+    if (!effective_volatile && is_inherently_readonly_image(lower_img)) {
+        effective_volatile = "overlay";
+        if (debug) {
+            std::cout << "Detected read-only image; defaulting to --volatile=overlay." << std::endl;
+        }
+    }
+    if (effective_volatile) {
+        nspawn_cmdline.push_back("--volatile=" + *effective_volatile);
     }
 
     TempDir overlay_image_dir;
@@ -521,6 +549,9 @@ int main(int argc, const char* argv[])
                 argparser.add_argument("--console", "Console mode")
                     .nargs(1)
                     .help("Console mode(see man systemd-nspawn)");
+                argparser.add_argument("--volatile", "Volatile mode (passed to systemd-nspawn).")
+                    .nargs(1)
+                    .help("Volatile mode passed through to systemd-nspawn (e.g. overlay, yes, state). Useful for read-only images.");
                 argparser.add_argument("--binpkgs-dir", "-B", "Directory for binary packages.")
                     .nargs(1)
                     .help("Directory for binary packages in the lower image.");
@@ -570,6 +601,7 @@ int main(int argc, const char* argv[])
                 return ::nspawn(lower_img, cmdline, {
                     .env_vars = env_map,
                     .console = argparser.present<std::string>("--console"),
+                    .volatile_mode = argparser.present<std::string>("--volatile"),
                     .genpack_overlay_dir = argparser.present<std::string>("--genpack-overlay-dir"),
                     .binpkgs_dir = argparser.present<std::string>("--binpkgs-dir"),
                     .download_dir = argparser.present<std::string>("--download-dir"),
