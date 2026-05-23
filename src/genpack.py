@@ -954,54 +954,18 @@ def pack(variant, compression=None):
 
     if compression is None:
         compression = genpack_json.get("compression", "gzip")
-    
-    compression_opts = []
-    if compression == "xz":
-        compression_opts = ["-comp", "xz", "-b", "1M"]
-    elif compression == "gzip":
-        compression_opts = ["-Xcompression-level", "1"]
-    elif compression == "lzo":
-        compression_opts = ["-comp", "lzo"]
-    elif compression == "none":
-        compression_opts = ["-no-compression"]
-    else:
-        raise ValueError(f"Unknown compression type: {compression}")
-
-    script = f"""set -e
-echo "Creating SquashFS image: {outfile} with compression {compression}"
-mksquashfs /mnt/extra/upper /mnt/host/{outfile} -wildcards -noappend -no-exports \
-    {" ".join(compression_opts)} -e build build.d build.d/* var/log/*.log var/tmp/*
-# exit successfully if EFI files are NOT present
-ls /usr/lib/genpack-install/*.efi 1> /dev/null 2>&1 || exit 0
-# check if /mnt/host/{outfile} is less than 4GiB. If not, show message and exit successfully
-filesize=$(stat -c%s /mnt/host/{outfile})
-if [ $filesize -ge $((4 * 1024 * 1024 * 1024)) ]; then
-    echo "Warning: The generated SquashFS image {outfile} is larger than or equal to 4GiB."
-    echo "So this can't be contained by superfloppy images."
-    exit 0
-fi
-# create EFI superfloppy image. the size is rounded up to the next MiB plus 100MiB for overhead
-# superfloppy image name. replace trailing .squashfs with .img
-superfloppy=/mnt/host/$(basename {outfile} .squashfs).img
-truncate -s $((($filesize + 104857600 + 1048575) / 1048576 * 1048576)) $superfloppy.tmp
-mformat -i $superfloppy.tmp -F -h 255 -t 4096 -n 32 ::
-mmd -i $superfloppy.tmp ::/EFI
-mmd -i $superfloppy.tmp ::/EFI/BOOT
-for efi in /usr/lib/genpack-install/*.efi; do
-    efifile=$(basename $efi)
-    mcopy -i $superfloppy.tmp $efi ::/EFI/BOOT/$efifile
-done
-# copy /mnt/host/{outfile} to the superfloppy as system.img
-mcopy -i $superfloppy.tmp /mnt/host/{outfile} ::/system.img
-mv $superfloppy.tmp $superfloppy
-echo "EFI superfloppy image created at $(basename $superfloppy)"
-"""
 
     if os.path.exists(outfile):
         logging.info(f"Output file {outfile} already exists, removing it.")
         os.remove(outfile)
 
-    subprocess.run(["genpack-helper", "nspawn", "--console=pipe", f"--extra-image={variant.upper_image}", variant.lower_image, "/bin/bash"], input=script, text=True, check=True)
+    imageprefix = f"/mnt/host/{outfile.removesuffix('.squashfs')}"
+    subprocess.run(
+        ["genpack-helper", "nspawn", "--console=pipe", f"--extra-image={variant.upper_image}",
+         variant.lower_image, "genpack-create-image", "/mnt/extra/upper", imageprefix,
+         "--compression", compression],
+        check=True
+    )
 
 def get_latest_mtime(*args):
     latest = 0.0
