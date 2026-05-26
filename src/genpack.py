@@ -379,6 +379,13 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         script = """[ -f /etc/portage/repos.conf/genpack-local-overlay.conf ] && echo "Removing existing repos.conf for genpack-local-overlay" && rm -f /etc/portage/repos.conf/genpack-local-overlay.conf || true"""
         subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
 
+    # After the local overlay is set up (but before the expensive emerge), give artifacts
+    # a chance to regenerate Manifests for their local ebuilds. This runs inside the Lower
+    # container where /var/cache/distfiles is writable, allowing normal users to maintain
+    # proper DIST checksums without host-level distfiles write permission.
+    if os.path.isdir("overlay"):
+        _maybe_regenerate_local_overlay_manifests(lower_image)
+
 def set_profile(lower_image, profile_name):
     arch_map = {
         "x86_64": "amd64",
@@ -759,6 +766,81 @@ def lower(variant=None, devel=False):
 
     with open(variant.lower_done, "w") as f:
         f.write("lower build complete\n")
+
+
+def _maybe_regenerate_local_overlay_manifests(lower_image):
+    """Regenerate Manifests for local overlay ebuilds inside the Lower container.
+
+    Simple policy:
+    - If a package directory under the host's `overlay/` contains .ebuild files
+      but has no `Manifest` file on the host side, we trigger manifest generation
+      inside the Lower container (where /var/cache/distfiles is writable).
+
+    Because we no longer protect Manifests with an rsync filter, any previously
+    generated Manifest inside the Lower image will be deleted on the next Lower
+    run. Therefore, we simply (re)generate whenever the host has no Manifest.
+
+    This keeps the developer experience simple: you can completely ignore
+    Manifest files for your local overlay packages.
+    """
+    if not os.path.isdir("overlay"):
+        return
+
+    packages_to_update = []
+
+    for category in os.listdir("overlay"):
+        cat_path = os.path.join("overlay", category)
+        if not os.path.isdir(cat_path):
+            continue
+        for package in os.listdir(cat_path):
+            pkg_path = os.path.join(cat_path, package)
+            if not os.path.isdir(pkg_path):
+                continue
+
+            # Does this package have any ebuilds?
+            has_ebuild = any(
+                f.endswith(".ebuild")
+                for f in os.listdir(pkg_path)
+                if os.path.isfile(os.path.join(pkg_path, f))
+            )
+            if not has_ebuild:
+                continue
+
+            # If the host has no Manifest, we need to generate one inside Lower.
+            manifest = os.path.join(pkg_path, "Manifest")
+            if not os.path.isfile(manifest):
+                packages_to_update.append(f"{category}/{package}")
+
+    if not packages_to_update:
+        return
+
+    logging.info(f"Regenerating Manifests for local overlay: {packages_to_update}")
+
+    # Build a small fixed shell script to run inside the container.
+    script_lines = ["#!/bin/sh", "set -e"]
+    for p in packages_to_update:
+        # Find one ebuild in the package (any version is fine for manifest regeneration)
+        script_lines.append(
+            f'ebuild_file=$(find "/var/db/repos/genpack-local-overlay/{p}" -maxdepth 1 -name "*.ebuild" | head -1)'
+        )
+        script_lines.append(
+            'if [ -n "$ebuild_file" ]; then'
+        )
+        script_lines.append(
+            '    ebuild "$ebuild_file" manifest || true'
+        )
+        script_lines.append('fi')
+
+    script = "\n".join(script_lines) + "\n"
+
+    # Execute the script inside the Lower container (as root, with proper Portage env)
+    subprocess.run(
+        ["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"],
+        input=script,
+        text=True,
+        check=False,   # don't fail the whole lower build if one manifest fails
+    )
+
 
 def bash(variant, command=None):
     nspawn_opts = []

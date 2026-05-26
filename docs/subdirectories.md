@@ -389,6 +389,20 @@ overlay/
 
 genpack が自動的に `metadata/layout.conf`、`profiles/repo_name`、`repos.conf` を生成するため、これらのファイルを手動で用意する必要はありません。
 
+### Manifest の自動更新
+
+`overlay/` 内に `SRC_URI` を持つ ebuild がある場合、通常は `ebuild ... manifest` で Manifest を生成する必要がありますが、一般ユーザーでは `/var/cache/distfiles` への書き込み権限がないため手動実行が難しいことがあります。
+
+genpack は Lower フェーズでこの処理を自動化しています：
+
+- Lower 準備時に、ホスト側の `overlay/` ディレクトリを検査
+- パッケージディレクトリに `.ebuild` ファイルが存在し、かつホスト側に `Manifest` ファイルが存在しない場合
+- Lower コンテナ内で該当パッケージに対して `ebuild ... manifest` を実行（この時点で distfiles キャッシュへの書き込みが可能）
+
+生成された Manifest は Lower イメージ内に残りますが、次回の rsync で `--delete` により削除されます。ただし、その場合はまた「ホスト側に Manifest がない」状態になるため、自動的に再生成されます。
+
+これにより、artifact 開発者はローカル overlay の Manifest ファイルを一切管理・コミットする必要がなくなります。Lower ビルド時に自動で最新化されます。シンプルなルールは「ホスト側に Manifest がなければ、必ず Lower 側で生成する」です。
+
 ## リビルドのトリガー
 
 Lower 層の再ビルドが必要かどうかは、以下のファイル・ディレクトリの更新タイムスタンプで判定されます:
