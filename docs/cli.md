@@ -15,12 +15,32 @@ genpack [グローバルオプション] <サブコマンド>
 | オプション | 型 | デフォルト | 説明 |
 |---|---|---|---|
 | `--debug` | フラグ | false | DEBUG レベルのログを表示 |
+| `--arch <ARCH>` | 選択 | ホストのアーキテクチャ | クロスビルドのターゲット: `x86_64`, `aarch64`, `i686`, `riscv64` |
 | `--overlay-override <DIR>` | パス | (なし) | genpack-overlay のローカルオーバーライドディレクトリ |
 | `--independent-binpkgs` | フラグ | false | アーティファクト固有のバイナリパッケージキャッシュを使用 |
 | `--deep-depclean` | フラグ | false | ビルド依存を含む深いクリーンアップを実行 |
 | `--compression <ALG>` | 選択 | (設定に従う) | SquashFS 圧縮: `gzip`, `xz`, `lzo`, `none` |
 | `--devel` | フラグ | false | 開発イメージの生成 |
 | `--variant <NAME>` | 文字列 | (設定に従う) | 使用するバリアント名 |
+
+### --arch
+
+ホストと異なるアーキテクチャのイメージをビルドします（クロスビルド）。
+
+```bash
+genpack --arch aarch64 build
+```
+
+ビルドの全工程（emerge、package-scripts、useradd、systemctl、SquashFS パック）は systemd-nspawn コンテナ内でターゲットアーキテクチャのバイナリとして実行されるため、ホスト側に以下の準備が必要です:
+
+- **static な qemu-user**（例: Gentoo では `app-emulation/qemu` に `static-user` USE フラグと `QEMU_USER_TARGETS="aarch64"` を設定）
+- **binfmt_misc への `F`（fix-binary）フラグ付き登録**（例: `systemd-binfmt`）。`F` フラグがないと systemd-nspawn のコンテナ内でインタプリタを解決できません
+
+genpack は起動時に登録を検査し、満たされていなければエラーで停止します。なお x86_64 ホストでの `--arch i686` はカーネルがネイティブ実行できるため qemu 不要です。
+
+ワークディレクトリ（`work/{arch}/`）、binpkg キャッシュ（`~/.cache/genpack/{arch}/binpkgs/`）、出力ファイル名（`{name}-{arch}.squashfs`）はすべてアーキテクチャ別に分離されているため、ネイティブビルドと共存できます。
+
+TCG エミュレーションのため lower 層のコンパイルはネイティブの 10〜20 倍遅くなります。ネイティブ機で生成した binpkg キャッシュ（`~/.cache/genpack/{arch}/binpkgs/`）を共有すると、エミュレーション側はほぼインストールのみになり実用的です。
 
 ### --overlay-override
 

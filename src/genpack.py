@@ -21,7 +21,16 @@ if _term in TERM_COMPAT_MAP:
     os.environ["TERM"] = TERM_COMPAT_MAP[_term]
 
 debug = False  # Set to True to enable debug output
-arch = os.uname().machine
+host_arch = os.uname().machine
+arch = host_arch  # overridden by --arch when cross building
+
+# ELF e_machine values of the supported target architectures
+ELF_MACHINE = {
+    "x86_64": 0x3e,
+    "i686": 0x03,
+    "aarch64": 0xb7,
+    "riscv64": 0xf3,
+}
 
 work_root = "work"
 work_dir = os.path.join(work_root, arch)
@@ -121,6 +130,49 @@ class DirectoryLock:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.release()
+
+def find_binfmt_interpreter(target_arch, binfmt_dir="/proc/sys/fs/binfmt_misc"):
+    """Find an enabled binfmt_misc entry whose ELF magic matches target_arch.
+    Returns (interpreter, flags) or None."""
+    elf_machine = ELF_MACHINE[target_arch]
+    if not os.path.isdir(binfmt_dir): return None
+    for name in os.listdir(binfmt_dir):
+        if name in ("register", "status"): continue
+        try:
+            with open(os.path.join(binfmt_dir, name)) as f:
+                lines = f.read().splitlines()
+        except OSError:
+            continue
+        if not lines or lines[0] != "enabled": continue
+        entry = {}
+        for line in lines[1:]:
+            key, _, value = line.partition(" ")
+            entry[key.rstrip(":")] = value.strip()
+        magic = entry.get("magic", "")
+        # ELF magic, e_machine is little-endian at byte offset 18-19
+        if not magic.startswith("7f454c46") or len(magic) < 40: continue
+        if int(magic[36:38], 16) | (int(magic[38:40], 16) << 8) != elf_machine: continue
+        return (entry.get("interpreter", "(unknown)"), entry.get("flags", ""))
+    return None
+
+def check_cross_arch_executability():
+    """When cross building, ensure target-arch binaries are transparently
+    executable on the host via a qemu-user binfmt_misc registration."""
+    if arch == host_arch: return
+    if (host_arch, arch) == ("x86_64", "i686"): return  # natively executable
+    found = find_binfmt_interpreter(arch)
+    if found is None:
+        raise RuntimeError(
+            f"Cross building for {arch} requires a binfmt_misc registration of static qemu-user. "
+            f"Install qemu with static user-mode emulation for {arch} and register it "
+            "with the 'F' (fix-binary) flag (e.g. via systemd-binfmt).")
+    interpreter, flags = found
+    if "F" not in flags:
+        raise RuntimeError(
+            f"binfmt_misc interpreter {interpreter} for {arch} is registered without the 'F' (fix-binary) flag. "
+            "systemd-nspawn requires fix-binary so the interpreter works inside the container; "
+            "re-register it with the 'F' flag.")
+    logging.info(f"{arch} binaries will run via {interpreter} (binfmt flags: {flags})")
 
 def url_readlines(url):
     """Read lines from a URL."""
@@ -1092,6 +1144,7 @@ def create_archive():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Genpack image Builder")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--arch", choices=sorted(ELF_MACHINE.keys()), default=None, help="Target architecture for cross building (default: host architecture)")
     parser.add_argument("--overlay-override", default=None, help="Directory to override genpack-overlay")
     parser.add_argument("--independent-binpkgs", action="store_true", help="Use independent binpkgs, do not use shared one")
     parser.add_argument("--deep-depclean", action="store_true", help="Perform deep depclean, removing all non-runtime packages"  )
@@ -1104,6 +1157,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     debug = args.debug
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO)
+
+    if args.arch is not None and args.arch != arch:
+        arch = args.arch
+        work_dir = os.path.join(work_root, arch)
+        cache_arch_dir = os.path.join(cache_root, arch)
+        binpkgs_dir = os.path.join(cache_arch_dir, "binpkgs")
+        logging.info(f"Cross building for {arch} on {host_arch}.")
 
     genpack_json, genpack_json_time = load_genpack_json()
     if "name" not in genpack_json:
@@ -1147,6 +1207,9 @@ if __name__ == "__main__":
         available_variants = genpack_json.get("variants", {})
         if variant.name not in available_variants:
             raise ValueError(f"Variant '{variant.name}' is not available in genpack.json. Available variants: {list(available_variants.keys())}")
+
+    # check if target-arch binaries can run on this host (no-op for native builds)
+    check_cross_arch_executability()
 
     # check if genpack-helper is properly installed
     subprocess.run(["genpack-helper", "ping"], check=True)
