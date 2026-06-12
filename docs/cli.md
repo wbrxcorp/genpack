@@ -38,6 +38,8 @@ genpack --arch aarch64 build
 
 genpack は起動時に登録を検査し、満たされていなければエラーで停止します。なお x86_64 ホストでの `--arch i686` はカーネルがネイティブ実行できるため qemu 不要です。
 
+エミュレーション下のビルドでは portage の `pid-sandbox` FEATURE を自動的に無効化します（qemu-user は PID namespace 内で内部スレッドを作成できず `qemu: qemu_thread_create: Invalid argument` で異常終了するため。[Gentoo Bug #703278](https://bugs.gentoo.org/703278)）。
+
 ワークディレクトリ（`work/{arch}/`）、binpkg キャッシュ（`~/.cache/genpack/{arch}/binpkgs/`）、出力ファイル名（`{name}-{arch}.squashfs`）はすべてアーキテクチャ別に分離されているため、ネイティブビルドと共存できます。
 
 TCG エミュレーションのため lower 層のコンパイルはネイティブの 10〜20 倍遅くなります。ネイティブ機で生成した binpkg キャッシュ（`~/.cache/genpack/{arch}/binpkgs/`）を共有すると、エミュレーション側はほぼインストールのみになり実用的です。

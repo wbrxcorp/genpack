@@ -155,11 +155,16 @@ def find_binfmt_interpreter(target_arch, binfmt_dir="/proc/sys/fs/binfmt_misc"):
         return (entry.get("interpreter", "(unknown)"), entry.get("flags", ""))
     return None
 
+def is_emulated_build():
+    """True when target-arch binaries require qemu-user emulation on this host."""
+    if arch == host_arch: return False
+    if (host_arch, arch) == ("x86_64", "i686"): return False  # natively executable
+    return True
+
 def check_cross_arch_executability():
     """When cross building, ensure target-arch binaries are transparently
     executable on the host via a qemu-user binfmt_misc registration."""
-    if arch == host_arch: return
-    if (host_arch, arch) == ("x86_64", "i686"): return  # natively executable
+    if not is_emulated_build(): return
     found = find_binfmt_interpreter(arch)
     if found is None:
         raise RuntimeError(
@@ -756,6 +761,10 @@ def lower(variant=None, devel=False):
         nspawn_opts.append(f"--binpkgs-dir={binpkgs_dir}")
     if overlay_override is not None:
         nspawn_opts.append(f"--genpack-overlay-dir={overlay_override}")
+    if is_emulated_build():
+        # qemu-user cannot create its internal threads inside the PID namespace
+        # portage's pid-sandbox sets up for each ebuild phase (Gentoo bug #703278)
+        nspawn_opts.append("--setenv=FEATURES=-pid-sandbox")
 
     emerge_parallel_opts = []
     if parallel:
