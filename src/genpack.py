@@ -942,6 +942,10 @@ def upper(variant):
     nspawn_opts = []
     if overlay_override is not None:
         nspawn_opts.append(f"--genpack-overlay-dir={overlay_override}")
+    if is_emulated_build():
+        # package scripts may run emerge (e.g. --config for initramfs generation),
+        # which hits the same pid-sandbox limitation as the lower phase (Gentoo bug #703278)
+        nspawn_opts.append("--setenv=FEATURES=-pid-sandbox")
 
     # build env opts shared across nspawn calls
     env_opts = ["-E", f"ARTIFACT={genpack_json['name']}"]
