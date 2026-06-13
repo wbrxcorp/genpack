@@ -19,6 +19,7 @@ genpack [グローバルオプション] <サブコマンド>
 | `--overlay-override <DIR>` | パス | (なし) | genpack-overlay のローカルオーバーライドディレクトリ |
 | `--independent-binpkgs` | フラグ | false | アーティファクト固有のバイナリパッケージキャッシュを使用 |
 | `--deep-depclean` | フラグ | false | ビルド依存を含む深いクリーンアップを実行 |
+| `--break-circular-deps` | フラグ | false | ビルド済み lower イメージでも循環依存ブレーカーを強制実行 |
 | `--compression <ALG>` | 選択 | (設定に従う) | SquashFS 圧縮: `gzip`, `xz`, `lzo`, `none` |
 | `--devel` | フラグ | false | 開発イメージの生成 |
 | `--variant <NAME>` | 文字列 | (設定に従う) | 使用するバリアント名 |
@@ -88,13 +89,21 @@ genpack lower
 6. genpack-overlay を同期
 7. Portage プロファイルを設定
 8. `genpack.json5` の設定（USE フラグ、キーワード、ライセンス、マスク）を適用
-9. 循環依存の解決（`circulardep_breaker` がある場合）
+9. 循環依存の解決（`circulardep_breaker` がある場合はそれを先に実行。続いて、stage3 から新規展開された lower イメージのときのみ、genpack-progs の `genpack-break-circular-dep` が依存解決を検査し、既知の循環があれば自動で解決）
 10. 全パッケージを emerge
 11. カーネルモジュールの再ビルド
 12. depclean, eclean によるクリーンアップ
 13. ビルド完了マーカー (`lower.done`) を書き込む
 
 Lower 層の再ビルドが必要かどうかは `genpack.json5` と Portage 関連サブディレクトリ（`savedconfig/`, `patches/`, `kernel/`, `env/`, `overlay/`）のタイムスタンプで判定されます。
+
+#### 循環依存ブレーカーの発火条件
+
+手順 9 の `genpack-break-circular-dep` による自動解決は、**stage3 から新規展開されたばかりの lower イメージ**（`lower.fresh` マーカーが存在する状態）でのみ実行されます。循環依存が実際に問題になるのはパッケージをソースからコンパイルするときだけで、binpkg キャッシュが温まっていれば emerge はビルド時依存の順序を無視して任意順でインストールできるためです。マーカーは新規展開時に作られ、ビルドが完全成功して `lower.done` が書かれた時点で削除されます。fresh ビルドが途中で失敗してもマーカーは残るため、リトライ時にもブレーカーが再発火します。
+
+先行ビルドされるのは**実際に循環に関与しているパッケージだけ**です（依存グラフ全体ではなく、portage が報告する循環メンバーに限定）。たとえば `media-libs/tiff` ↔ `media-libs/libwebp` の循環では、ベースシステムが間接的に引いている `dev-python/pillow` などは循環に関与しないため対象外になります。
+
+ビルド済みイメージに対し USE フラグ変更などで新たな循環が生じた稀なケースでは、`--break-circular-deps` で強制的に発火させられます。
 
 ### upper
 

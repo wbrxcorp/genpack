@@ -57,6 +57,9 @@ class Variant:
         self.name = name
         self.lower_image = os.path.join(work_dir, "lower.img") if self.name is None else os.path.join(work_dir, "lower-%s.img" % self.name)
         self.lower_done = os.path.join(work_dir, "lower.done") if self.name is None else os.path.join(work_dir, "lower-%s.done" % self.name)
+        # marker present while a freshly extracted lower image has not yet
+        # completed a full build; gates the automatic circular-dep breaker
+        self.lower_fresh = os.path.join(work_dir, "lower.fresh") if self.name is None else os.path.join(work_dir, "lower-%s.fresh" % self.name)
         self.upper_image = os.path.join(work_dir, "upper.img") if self.name is None else os.path.join(work_dir, "upper-%s.img" % self.name)
 
 LockMode = Literal["shared", "exclusive"]
@@ -705,6 +708,10 @@ def lower(variant=None, devel=False):
         setup_lower_image(variant.lower_image, stage3_tarball, portage_tarball, overlay_tarball)
         with open(stage3_saved_headers_path, 'w') as f:
             f.write(headers_to_info(stage3_headers))
+        # the vardb is now the bare stage3 baseline; remember that a full build
+        # has not happened yet so the circular-dep breaker runs (and keeps
+        # running across failed retries until lower.done is written)
+        open(variant.lower_fresh, "w").close()
     else:
         if portage_is_new:
             replace_portage(variant.lower_image, portage_tarball)
@@ -793,6 +800,29 @@ def lower(variant=None, devel=False):
             logging.debug(f"Circulardep breaker emerge command: {' '.join(emerge_cmd)}")
             subprocess.run(["genpack-helper", "nspawn"] + circulardep_breaker_nspawn_opts + [variant.lower_image] + emerge_cmd, check=True)
 
+    # automatic circular dependency breaker. only needed when packages get
+    # compiled from source (warm binpkgs let emerge install in any order,
+    # ignoring build-time dependency cycles), i.e. on a freshly extracted lower
+    # image. lower.fresh marks that state and persists across failed retries.
+    # --break-circular-deps forces it for the rare case where a USE change on an
+    # already-built image introduces a new cycle.
+    if os.path.exists(variant.lower_fresh) or break_circular_deps:
+        # genpack-progs is installed with --nodeps because its full dependency
+        # closure is resolved by the main emerge right after (it is part of
+        # @system via the profile)
+        logging.info("Checking for circular dependencies...")
+        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image,
+                        "emerge", "--oneshot", "--nodeps", "-bk", "--binpkg-respect-use=y",
+                        "genpack/genpack-progs"], check=True)
+        breaker_available = subprocess.run(["genpack-helper", "nspawn", "--console=pipe"] + nspawn_opts
+                        + [variant.lower_image, "which", "genpack-break-circular-dep"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if breaker_available:
+            subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image,
+                            "genpack-break-circular-dep"] + emerge_parallel_opts, check=True)
+        else:
+            logging.warning("genpack-break-circular-dep not available (genpack-progs too old?), skipping automatic circular dependency check.")
+
     logging.info("Emerging all packages...")
     emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-uDN", "--keep-going"] + emerge_parallel_opts
     if len(binpkg_excludes) > 0:
@@ -827,6 +857,10 @@ def lower(variant=None, devel=False):
 
     with open(variant.lower_done, "w") as f:
         f.write("lower build complete\n")
+    # a full build succeeded; the image is no longer in the fresh state, so the
+    # circular-dep breaker can be skipped on subsequent incremental rebuilds
+    if os.path.exists(variant.lower_fresh):
+        os.remove(variant.lower_fresh)
 
 
 def _maybe_regenerate_local_overlay_manifests(lower_image):
@@ -1161,6 +1195,7 @@ if __name__ == "__main__":
     parser.add_argument("--overlay-override", default=None, help="Directory to override genpack-overlay")
     parser.add_argument("--independent-binpkgs", action="store_true", help="Use independent binpkgs, do not use shared one")
     parser.add_argument("--deep-depclean", action="store_true", help="Perform deep depclean, removing all non-runtime packages"  )
+    parser.add_argument("--break-circular-deps", action="store_true", help="Force the circular dependency breaker even on an already-built lower image (normally it runs only on a freshly extracted one)")
     parser.add_argument("--parallel", action="store_true", help="Build multiple packages in parallel (--jobs and --load-average set to CPU count)")
     parser.add_argument("--compression", choices=["gzip", "xz", "lzo", "none"], default=None, help="Compression type for the final SquashFS image")
     parser.add_argument("--devel", action="store_true", help="Generate development image, if supported by genpack.json")
@@ -1213,6 +1248,7 @@ if __name__ == "__main__":
 
     independent_binpkgs = args.independent_binpkgs or genpack_json.get("independent_binpkgs", False)
     deep_depclean = args.deep_depclean
+    break_circular_deps = args.break_circular_deps
     parallel = args.parallel
 
     variant = Variant(args.variant or genpack_json.get("default_variant", None))

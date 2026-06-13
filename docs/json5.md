@@ -280,18 +280,23 @@
 
 - **型**: object
 - **デフォルト**: (なし)
-- **説明**: Gentoo の循環依存を解決するための特殊設定。一部のパッケージ（freetype ↔ harfbuzz など）は互いに依存しているため、最初に制限された USE フラグでインストールしてから通常ビルドを行います。
+
+> **ほとんどの場合このキーは不要です。** 既知の Gentoo 循環依存は、genpack-progs の `genpack-break-circular-dep` が lower ビルド時に自動検出・解決します。このキーは、自動解決のテーブルがまだ対応していない**新しい循環に遭遇したときの応急処置**としてのみ使ってください（恒久対応は genpack-progs 側のテーブル更新で、こちらは不要になります）。
+
+Gentoo の一部のパッケージは USE フラグ次第で互いに依存し合い、emerge がビルド順序を決められなくなることがあります（ソースからのコンパイル時のみ問題になります。binpkg があればビルド時依存の順序は無視されるため発生しません）。`circulardep_breaker` を指定すると、`packages` のパッケージを `use` の制限フラグ付きで先にインストールして循環を断ち切り、その後の通常ビルドで正しいフラグに再ビルドします。
 
 ```json5
 {
   circulardep_breaker: {
+    // 書式の例。実際の freetype ↔ harfbuzz の循環は上流で解消済みで、
+    // 残っている既知の循環も genpack-break-circular-dep が自動処理します
     packages: ["media-libs/freetype", "media-libs/harfbuzz"],
     use: "-truetype -harfbuzz"
   }
 }
 ```
 
-`packages` に指定したパッケージが `use` で指定した USE フラグ付きで先にインストールされ、その後の通常ビルドで正しいフラグで再ビルドされます。
+自動解決の発火条件（fresh な lower イメージでのみ実行、`--break-circular-deps` での強制実行など）の詳細は [CLI リファレンスの「循環依存ブレーカーの発火条件」](cli.md#循環依存ブレーカーの発火条件)を参照してください。
 
 ### 条件付き設定
 
