@@ -845,10 +845,20 @@ def lower(variant=None, devel=False):
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "genpack-unmerge-masked-packages"] + emerge_parallel_opts, check=True)
 
     logging.info("Cleaning up...")
-    cleanup_cmd = "emerge --depclean"
+    # Run depclean on its own so we can fall back to --with-bdeps=n on failure.
+    # The default depclean (--with-bdeps=y) keeps build-time dependencies and, as
+    # a safety measure, aborts entirely when they can't all be resolved (e.g. mid
+    # python-target migration). In the lower layer only the runtime/buildtime
+    # package sets and their runtime closure need to survive, so dropping build
+    # deps is a safe fallback that also slims the layer.
+    depclean_cmd = ["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "emerge", "--depclean"]
     if deep_depclean:
-        cleanup_cmd += " --with-bdeps=n"
-    cleanup_cmd += " && etc-update --automode -5"
+        subprocess.run(depclean_cmd + ["--with-bdeps=n"], check=True)
+    elif subprocess.run(depclean_cmd).returncode != 0:
+        logging.warning("emerge --depclean failed; retrying with --with-bdeps=n")
+        subprocess.run(depclean_cmd + ["--with-bdeps=n"], check=True)
+
+    cleanup_cmd = "etc-update --automode -5"
     cleanup_cmd += " && eclean-dist -d"
     cleanup_cmd += " && eclean-pkg"
     if independent_binpkgs:
