@@ -412,7 +412,13 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
     # apply kernel config
     if os.path.isdir("kernel"):
         logging.info(f"Installing kernel config...")
-        subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--delete", "/mnt/host/kernel", "/etc/kernel"], check=True)  
+        # NOTE: trailing slash on the source copies the *contents* of kernel/
+        # into /etc/kernel (so kernel/config.d/ -> /etc/kernel/config.d/, which
+        # is where kernel-build.eclass looks). Without it rsync nests the dir as
+        # /etc/kernel/kernel/ and the fragments are never read. --delete is
+        # omitted so we don't wipe the kernel package's own /etc/kernel entries
+        # (install.d, postinst.d, preinst.d).
+        subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "/mnt/host/kernel/", "/etc/kernel"], check=True)
     else:
         script = """[ -d /etc/kernel ] && echo "Removing existing kernel directory" && rm -rf /etc/kernel || true"""
         subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
