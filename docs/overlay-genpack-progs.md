@@ -60,7 +60,6 @@
 | `net-analyzer/tcpdump` | ネットワークパケットキャプチャ |
 | `app-editors/nano` | テキストエディタ |
 | `app-editors/vim` | テキストエディタ |
-| `net-misc/netkit-telnetd` | Telnet デーモン |
 | `app-misc/figlet` | ASCII アートテキスト生成 |
 | `sys-fs/squashfs-tools[lz4,lzma,lzo,xattr,zstd]` | SquashFS イメージの作成・展開 |
 | `app-admin/eclean-kernel` | 古いカーネルの自動削除 |
