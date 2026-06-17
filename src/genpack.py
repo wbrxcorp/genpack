@@ -828,7 +828,7 @@ def lower(variant=None, devel=False):
         # @system via the profile)
         logging.info("Checking for circular dependencies...")
         subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image,
-                        "emerge", "--oneshot", "--nodeps", "-bk", "--binpkg-respect-use=y",
+                        "emerge", "--oneshot", "--update", "--nodeps", "-bk", "--binpkg-respect-use=y",
                         "genpack/genpack-progs"], check=True)
         breaker_available = subprocess.run(["genpack-helper", "nspawn", "--console=pipe"] + nspawn_opts
                         + [variant.lower_image, "which", "genpack-break-circular-dep"],
