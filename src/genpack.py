@@ -490,7 +490,8 @@ def load_genpack_json(directory="."):
     return (json_parser.load(open(json_file, "r")), os.path.getmtime(json_file))
 
 def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "outfile","devel","packages","buildtime_packages",
-                                                           "accept_keywords","use","mask","license","env","binpkg_excludes","users","groups", 
+                                                           "buildtime_packages_first",
+                                                           "accept_keywords","use","mask","license","env","binpkg_excludes","users","groups",
                                                            "setup_commands", "services", "arch","variants", ], variant = None):
     if not isinstance(trunk, dict):
         raise ValueError("trunk must be a dictionary")
@@ -513,6 +514,14 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
             raise ValueError(f"devel at {path_str} must be a boolean")
         #else
         trunk["devel"] = branch["devel"]
+
+    # Opt-in: emerge @genpack-buildtime in a separate pass *before* the main
+    # (@world @genpack-runtime @genpack-buildtime) emerge. See ADR-0003.
+    if "buildtime_packages_first" in allowed_properties and "buildtime_packages_first" in branch:
+        if not isinstance(branch["buildtime_packages_first"], bool):
+            raise ValueError(f"buildtime_packages_first at {path_str} must be a boolean")
+        #else
+        trunk["buildtime_packages_first"] = branch["buildtime_packages_first"]
 
     if "packages" in allowed_properties and "packages" in branch:
         if not isinstance(branch["packages"], list):
@@ -646,6 +655,7 @@ def merge_genpack_json(trunk, branch, path, allowed_properties = ["profile", "ou
         if variant in branch["variants"]:
             merge_genpack_json(trunk, branch["variants"][variant], path + [f"variant={variant}"], [
                 "name","profile","outfile","packages","buildtime_packages",
+                "buildtime_packages_first",
                 "accept_keywords","use","mask","license","env","binpkg_excludes","users","groups",
                 "services","setup_commands","arch"
             ])
@@ -742,8 +752,8 @@ def lower(variant=None, devel=False):
 
     # merge main genpack.json
     merged_genpack_json = {}
-    merge_genpack_json(merged_genpack_json, genpack_json, ["genpack.json"], 
-        ["profile","packages","buildtime_packages",
+    merge_genpack_json(merged_genpack_json, genpack_json, ["genpack.json"],
+        ["profile","packages","buildtime_packages","buildtime_packages_first",
             "accept_keywords","use","mask","license","env","binpkg_excludes",
             "arch","variants"], variant)
 
@@ -828,6 +838,26 @@ def lower(variant=None, devel=False):
                             "genpack-break-circular-dep"] + emerge_parallel_opts, check=True)
         else:
             logging.warning("genpack-break-circular-dep not available (genpack-progs too old?), skipping automatic circular dependency check.")
+
+    # Opt-in: emerge @genpack-buildtime in its own pass *before* the main emerge.
+    # buildtime_packages normally just means "in the Lower, kept out of the final
+    # image"; portage merges them together with runtime packages and resolves order
+    # via declared dependencies. But a build-env tool that a runtime package needs
+    # *without* a declared dependency (e.g. a clang/LLVM toolchain imposed on
+    # gentoo-kernel via package.env) has no dependency edge, so portage cannot
+    # guarantee it is built first — and under --parallel they race. This flag lets
+    # such artifacts opt in to seeding buildtime_packages into the build environment
+    # first (a separate emerge process, so PATH/profile.env are also refreshed for
+    # the main pass). See ADR-0003.
+    if merged_genpack_json.get("buildtime_packages_first", False) \
+            and len(merged_genpack_json.get("buildtime_packages", [])) > 0:
+        logging.info("Emerging buildtime_packages first (buildtime_packages_first=true)...")
+        emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-uDN", "--keep-going"] + emerge_parallel_opts
+        if len(binpkg_excludes) > 0:
+            emerge_cmd += ["--usepkg-exclude", " ".join(binpkg_excludes)]
+            emerge_cmd += ["--buildpkg-exclude", " ".join(binpkg_excludes)]
+        emerge_cmd += ["@genpack-buildtime"]
+        subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image] + emerge_cmd, check=True)
 
     logging.info("Emerging all packages...")
     emerge_cmd = ["emerge", "-bk", "--binpkg-respect-use=y", "-uDN", "--keep-going"] + emerge_parallel_opts
