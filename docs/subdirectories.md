@@ -293,6 +293,26 @@ kernel/
 # CONFIG_KEXEC_SIG is not set
 ```
 
+### arch-&lt;arch&gt;/ — アーキテクチャ別の上書き
+
+`kernel/arch-<arch>/` を置くと、その中身が**対象アーキテクチャのビルド時だけ** `/etc/kernel/` の上にオーバーレイ（rsync で重ね書き、`--delete` なし）されます。`<arch>` は genpack のアーキテクチャトークン（`x86_64` / `aarch64` / `riscv64`、`uname -m` 相当で `--arch` の値と同じ）です。`arch-*` ディレクトリはアーキ非依存の第1段コピーからは除外されるので、他アーキに漏れません。
+
+```
+kernel/
+├── config.d/
+│   ├── clang.config            # 全アーキ共通（kCFI=y 等）
+│   └── 00-minimize.config
+└── arch-riscv64/
+    └── config.d/
+        └── zz-no-kcfi.config   # riscv64 でのみ kCFI を無効化
+```
+
+同一アーティファクトから複数アーキのイメージをビルドする際、ツリーを分岐させずにアーキ固有のカーネル設定を表現できます（例: RISC-V でだけ早期ブートを壊す kCFI を無効化しつつ x86_64 では有効に保つ）。
+
+オーバーレイは**同名ファイルの丸ごと置換**にも使えます。`arch-<arch>/config.d/clang.config` を置けば、共有の `config.d/clang.config` をそのアーキでだけ置き換えられます（差分が大きくアーキごとに全体を持たせたい場合）。この置換はタイムスタンプに依存せず確実に上書きされます（genpack 側で `rsync --ignore-times` を使うため、`git checkout` 由来の同一 mtime で取りこぼすことはありません）。差分が小さいうちは前述の `zz-` 上書き、増えてきたら全コピー、と選べます。
+
+> **命名の注意**: kernel-build.eclass は `config.d/*.config` をファイル名のアルファベット順でマージし**後勝ち**です。数字（`0`–`9`）は英字より前にソートされるため、`clang.config` のような英字始まりの共通フラグメントを上書きしたい場合、`90-...config` のような数字始まりの名前では**負けます**。共通フラグメントに確実に勝たせるには `zz-` のような後方にソートする接頭辞を使ってください。
+
 ## savedconfig/ — Portage savedconfig
 
 カーネルなど、ビルド時にカスタム設定ファイルを参照するパッケージのための設定を配置するディレクトリです。Lower フェーズで `/etc/portage/savedconfig/` にコピーされます。

@@ -418,7 +418,32 @@ def apply_portage_sets_and_flags(lower_image, runtime_packages, buildtime_packag
         # /etc/kernel/kernel/ and the fragments are never read. --delete is
         # omitted so we don't wipe the kernel package's own /etc/kernel entries
         # (install.d, postinst.d, preinst.d).
-        subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "/mnt/host/kernel/", "/etc/kernel"], check=True)
+        #
+        # kernel/arch-<arch>/ subdirs are per-architecture overlays applied in a
+        # second pass below; exclude them from this arch-agnostic first pass so
+        # they don't leak into other arches (the /-anchored pattern matches only
+        # the top-level arch-* entries of the transfer root).
+        subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--exclude=/arch-*", "/mnt/host/kernel/", "/etc/kernel"], check=True)
+        # Per-arch overlay: rsync kernel/arch-<arch>/ *on top* of /etc/kernel
+        # (contents-merge, no --delete) so e.g. kernel/arch-riscv64/config.d/
+        # zz-no-kcfi.config layers onto the shared config.d/. This lets one
+        # artifact express arch-specific kernel config (e.g. disable kCFI on
+        # riscv64 while keeping it on x86_64) without forking the whole tree.
+        # NOTE: kernel-build.eclass merges config.d/*.config in filename order
+        # (last wins), and digits sort before letters -- so an override meant to
+        # beat clang.config must sort AFTER it (use a 'zz-' prefix, not a number).
+        #
+        # --ignore-times is REQUIRED here: this overlay may place a file with the
+        # SAME name as a base file (full per-arch replacement style, e.g.
+        # arch-riscv64/config.d/clang.config overwriting the shared one). rsync's
+        # default quick-check skips when size AND mtime match, and a git checkout
+        # stamps every file with the same mtime -- so a same-size same-name file
+        # would be silently skipped, leaving the base version. --ignore-times
+        # forces the overlay to always win regardless of timestamps. (--delete is
+        # still omitted: the overlay adds/overwrites, it must not wipe base files.)
+        if os.path.isdir(f"kernel/arch-{arch}"):
+            logging.info(f"Overlaying per-arch kernel config (arch-{arch})...")
+            subprocess.run(["genpack-helper", "nspawn", lower_image, 'rsync', '-rlptD', "--ignore-times", f"/mnt/host/kernel/arch-{arch}/", "/etc/kernel"], check=True)
     else:
         script = """[ -d /etc/kernel ] && echo "Removing existing kernel directory" && rm -rf /etc/kernel || true"""
         subprocess.run(["genpack-helper", "nspawn", "--console=pipe", lower_image, "sh"], input=script, text=True, check=True)
