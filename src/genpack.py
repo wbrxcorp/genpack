@@ -782,7 +782,8 @@ def lower(variant=None, devel=False):
             "accept_keywords","use","mask","license","env","binpkg_excludes",
             "arch","variants"], variant)
 
-    profile = genpack_json.get("profile", None)
+    # profile はバリアントで上書きされ得るため、必ずマージ後の値を参照する
+    profile = merged_genpack_json.get("profile", None)
     set_profile(variant.lower_image, profile)
 
     #devel = devel or merged_genpack_json.get("devel", False)
@@ -1052,9 +1053,16 @@ def upper(variant):
         # which hits the same pid-sandbox limitation as the lower phase (Gentoo bug #703278)
         nspawn_opts.append("--setenv=FEATURES=-pid-sandbox")
 
+    # merge genpack.json for profile/groups/users/services
+    # (profile はバリアントで上書きされ得るため、マージ後の値を使う)
+    merged_genpack_json = {}
+    merge_genpack_json(merged_genpack_json, genpack_json, ["genpack.json"], [
+        "profile", "users","groups", "services", "arch", "variants"
+    ], variant)
+
     # build env opts shared across nspawn calls
     env_opts = ["-E", f"ARTIFACT={genpack_json['name']}"]
-    profile = genpack_json.get("profile", None)
+    profile = merged_genpack_json.get("profile", None)
     if profile:
         env_opts += ["-E", f"PROFILE={profile}"]
     if variant.name is not None:
@@ -1068,12 +1076,6 @@ def upper(variant):
                     *env_opts,
                     variant.lower_image, "genpack-exec-package-scripts"],
                     check=True)
-
-    # merge genpack.json for groups/users/services
-    merged_genpack_json = {}
-    merge_genpack_json(merged_genpack_json, genpack_json, ["genpack.json"], [
-        "users","groups", "services", "arch", "variants"
-    ], variant)
 
     # 2. create groups
     groups = merged_genpack_json.get("groups", [])
