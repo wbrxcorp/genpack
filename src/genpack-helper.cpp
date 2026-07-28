@@ -160,6 +160,13 @@ void mount_loop(const std::filesystem::path& source,
     RealRootSection root_section; // real uid must be root to mount
 
     std::shared_ptr<libmnt_context> ctx(mnt_new_context(), mnt_free_context);
+    // util-linux 2.42+ treats a setuid launch (AT_SECURE) as a "restricted"
+    // mount even after we regain full root via setuid(0) above (RealRootSection).
+    // Restricted mode requires an /etc/fstab entry and otherwise refuses with
+    // rc=-5000 ("can't find in /etc/fstab") before the mount syscall is even
+    // attempted. We are legitimately root here, so opt out of the unprivileged-user
+    // rules. (mnt_context_force_unrestricted exists since util-linux 2.35.)
+    mnt_context_force_unrestricted(ctx.get());
     mnt_context_set_fstype_pattern(ctx.get(), fstype.c_str());
     mnt_context_set_source(ctx.get(), source.c_str());
     mnt_context_set_target(ctx.get(), mountpoint.c_str());
@@ -172,15 +179,22 @@ void mount_loop(const std::filesystem::path& source,
     mnt_context_set_options(ctx.get(), opts.c_str());
 
     auto rst = mnt_context_mount(ctx.get());
-    auto status = mnt_context_get_status(ctx.get());
-    auto helper_success = mnt_context_helper_executed(ctx.get()) == 1 ? (mnt_context_get_helper_status(ctx.get()) == 0) : true;
 
-    if (rst > 0) {
-        throw std::runtime_error("mnt_context_mount failed: " + std::string(strerror(errno)));
+    // rst: 0=success, >0=mount(2) errno, <0=libmount error. Decode BOTH with
+    // mnt_context_get_excode() (the same logic mount(8) uses); with the fd-based
+    // mount API a plain errno is often not set, so the old strerror(errno) path
+    // was blind and produced opaque "errno not set" messages.
+    if (rst != 0 || mnt_context_get_status(ctx.get()) != 1) {
+        char buf[256] = {0};
+        mnt_context_get_excode(ctx.get(), rst, buf, sizeof(buf));
+        std::string msg = buf[0] ? std::string(buf) : ("rc=" + std::to_string(rst));
+        // Append any kernel messages surfaced by the new fd-based mount API.
+        if (char** mesgs = mnt_context_get_mesgs(ctx.get())) {
+            for (int i = 0; mesgs[i]; ++i) { msg += "; "; msg += mesgs[i]; }
+        }
+        throw std::runtime_error("Failed to mount " + source.string()
+            + " on " + mountpoint.string() + ": " + msg);
     }
-    if (rst < 0) throw std::runtime_error("mnt_context_mount returned error(errno not set)");
-    if (status != 1) throw std::runtime_error("mnt_context_get_status returned error");
-    if (!helper_success) throw std::runtime_error("mnt_context_get_helper_status returned error");
 }
 
 class TempDir {
