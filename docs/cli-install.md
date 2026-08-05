@@ -86,7 +86,7 @@ genpack-install --disk=list
 
 - **MBR/GPT の自動選択**: ディスクが 2TiB 以下かつ論理セクタサイズが 512 バイトの場合は MBR、それ以外は GPT が選択されます
 - `--gpt`: 条件に関わらず GPT を強制使用
-- `--superfloppy`: パーティションテーブルを作成せず、ディスク全体を FAT32 としてフォーマット（4GiB 未満のイメージのみ）
+- `--superfloppy`: パーティションテーブルを作成せず、ディスク全体を FAT32 としてフォーマット（4GiB 未満のイメージのみ）。**BIOS ブートローダーは設置されず、UEFI 専用になります**（後述）
 
 **通常モード（パーティショニングあり）のレイアウト:**
 
@@ -197,7 +197,18 @@ genpack-install / genpack-mkiso は GRUB をブートローダーとして使用
 **genpack-install がインストールするファイル:**
 
 - **EFI ブートローダー**: `boot*.efi` ファイルが `efi/boot/` にコピーされます
-- **BIOS ブートローダー**: `boot.img`、`core.img`、`grub.cfg` が存在し `grub-bios-setup` が利用可能な場合にインストールされます
+- **BIOS ブートローダー**: 以下をすべて満たす場合にインストールされます
+  - パーティショニングを行った（`--superfloppy` **ではない**）
+  - MBR が選択された（ディスクが 2TiB 以下かつ論理セクタサイズ 512 バイトで、`--gpt` を指定していない）
+  - `boot.img`、`core.img`、`grub.cfg` が揃っている
+  - `grub-bios-setup` が利用可能
+
+> **`--superfloppy` は UEFI 専用です。** パーティションテーブルを作らないモードでは BIOS ブートローダーは設置されません。これは現在の `core.img` の作りによる制約です。
+>
+> - `core.img` は `grub-mkimage -p '(,msdos1)/boot/grub'` でプレフィックスを埋め込んでいるため、パーティション 1 が存在しない superfloppy では `grub.cfg` に到達できません
+> - `grub-bios-setup` は MBR 直後のギャップに `core.img` を埋め込みますが、superfloppy はセクタ 0 が FAT32 の BPB で、そのギャップがありません
+>
+> BIOS で起動する必要がある場合は `--superfloppy` を使わずに通常のパーティショニングを行ってください。
 
 **対応アーキテクチャ:**
 
