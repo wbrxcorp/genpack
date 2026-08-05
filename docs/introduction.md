@@ -20,7 +20,7 @@ flowchart LR
   end
 
   subgraph runtime["配布・実行層"]
-    install["genpack-install<br/>ディスク書込 / ISO /<br/>セルフアップデート"]
+    install["genpack-install / mkiso / mkzip<br/>ディスク書込 / ISO / ZIP /<br/>セルフアップデート"]
     vm["vm<br/>QEMU/KVM で<br/>仮想マシンとして実行"]
     init["genpack-init<br/>毎回起動時の<br/>プロビジョニング"]
   end
@@ -40,7 +40,7 @@ flowchart LR
 | **genpack** | Python + C++ | JSON5 設定から SquashFS イメージを生成 | [wbrxcorp/genpack](https://github.com/wbrxcorp/genpack) |
 | **genpack-overlay** | Gentoo ebuild/profile | パッケージ定義・プロファイル階層・初期化スクリプト群 | [wbrxcorp/genpack-overlay](https://github.com/wbrxcorp/genpack-overlay) |
 | **genpack-init** | C++ + Python (pybind11) | 毎回起動時に system.ini に基づきシステムを構成 | [wbrxcorp/genpack-init](https://github.com/wbrxcorp/genpack-init) |
-| **genpack-install** | C++ | イメージをディスク/ISO/ZIP にデプロイ、セルフアップデート | [wbrxcorp/genpack-install](https://github.com/wbrxcorp/genpack-install) |
+| **genpack-install** | C++ | イメージをディスクにデプロイ、セルフアップデート、ISO/ZIP 生成 (`genpack-mkiso` / `genpack-mkzip`) | [wbrxcorp/genpack-install](https://github.com/wbrxcorp/genpack-install) |
 | **vm** | C++ | genpack イメージを QEMU/KVM 上で実行・管理 | [shimarin/vm](https://github.com/shimarin/vm) |
 | **genpack-artifacts** | JSON5 + シェルスクリプト | 具体的なイメージ定義の集合 | [genpack-artifacts](https://github.com/genpack-artifacts) (GitHub Organization) |
 
@@ -191,16 +191,16 @@ genpack イメージの initramfs は、起動時にブートストレージ上�
 
 [GitHub: wbrxcorp/genpack-install](https://github.com/wbrxcorp/genpack-install)
 
-genpack-install は生成されたシステムイメージを物理ストレージに書き込み、ブート可能な状態にするツールです。
+生成されたシステムイメージをブート可能な形にデプロイするツール群です。実ディスクを触る `genpack-install` と、ビルドホスト上で成果物を組み立てる `genpack-mkiso` / `genpack-mkzip` に分かれています。後者はシステムイメージを libsquashfs で直接読むため、ループバックマウントも root 権限も必要としません。
 
 ### 動作モード
 
-| モード | 用途 |
-|---|---|
-| `--disk=<device>` | 物理ディスクへのインストール (パーティショニング + ブートローダー設置) |
-| セルフアップデート | 稼働中のシステムのイメージをアトミックに入れ替え |
-| `--cdrom=<file>` | ブータブル ISO 9660 イメージの作成 |
-| `--zip=<file>` | ZIP アーカイブの作成 |
+| モード | 用途 | root |
+|---|---|---|
+| `genpack-install --disk=<device>` | 物理ディスクへのインストール (パーティショニング + ブートローダー設置) | 必要 |
+| `genpack-install <image>` | 稼働中のシステムのイメージをアトミックに入れ替え (セルフアップデート) | 必要 |
+| `genpack-mkiso <file> <image>` | ブータブル ISO 9660 イメージの作成 | 不要 |
+| `genpack-mkzip <file> <image>` | ZIP アーカイブの作成 | 不要 |
 
 ### マルチアーキテクチャブート対応
 
@@ -333,7 +333,7 @@ flowchart TD
   pack["Pack<br/>SquashFS 圧縮<br/>system-x86_64.squashfs"]
   deploy["3. デプロイ<br/>(いずれかを選択)"]
   disk["genpack-install --disk=/dev/sdX<br/>(物理ディスク)"]
-  cdrom["genpack-install --cdrom=out.iso<br/>(ISO イメージ)"]
+  cdrom["genpack-mkiso out.iso<br/>(ISO イメージ)"]
   vm["vm run system-x86_64.squashfs<br/>(仮想マシン)"]
   boot["4. 起動時<br/>genpack-init が system.ini を読んで<br/>システムを構成"]
   operate["5. 運用<br/>system.ini を編集して再起動 = 設定変更<br/>新イメージでセルフアップデート = OS 更新"]
