@@ -310,6 +310,8 @@
 
 第 1 フィールドは常にコミット ID なので `cut -d' ' -f1 /.genpack/commit-id` で取り出せます。逆に「clean であること」を機械的に判定する場合は、**空白区切りでちょうど 1 トークンであること**を条件としてください（ファイルが無い場合や未知の形式は clean でないものとして扱う）。
 
+デプロイ時にこれをゲートとして使う場合は、`genpack-install` / `genpack-mkiso` / `genpack-mkzip` の [`--require-clean-commit`](cli-install.md#--require-clean-commit) が同じ判定を実装しています。これらのコマンドは、フラグの有無に関わらず記録されたコミット ID を常に表示します。
+
 注意点：
 
 - コミット ID は genpack がホスト側で `git rev-parse HEAD` / `git status --porcelain` を実行して取得します。git 管理下でないなど取得に失敗した場合、明示的に要求されている以上ビルドはエラーで停止します（`genpack archive` で配布された定義には `.git` が無いので取得できません）

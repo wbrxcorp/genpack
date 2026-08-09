@@ -229,5 +229,6 @@ git ls-files --others --ignored --exclude-standard -- <ビルド入力>
 ## 積み残し
 
 genpack-install 側の対応（`/.genpack/commit-id` の常時表示と、デプロイ時ゲートとしての
-`--require-clean-commit`）は本 ADR の範囲外で、genpack-install / genpack-mkiso / genpack-mkzip の
-3 つを対象に別途実装する。前章のとおり、これは運用上のガードレールとして設計する。
+`--require-clean-commit`）は本 ADR の範囲外とし、genpack-install / genpack-mkiso / genpack-mkzip の
+3 つを対象に別途実装した。前章のとおり、運用上のガードレールとして設計してある。
+仕様は [genpack-install CLI リファレンス](../docs/cli-install.md#--require-clean-commit)を参照。
