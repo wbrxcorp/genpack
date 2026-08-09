@@ -12,6 +12,18 @@ import requests # dev-python/requests
 DEFAULT_LOWER_SIZE_IN_GIB = 128  # Default max size of lower image in GiB
 DEFAULT_UPPER_SIZE_IN_GIB = 20  # Default max size of upper image in GiB
 
+# What genpack reads out of the artifact directory as build input. This is the
+# authoritative list: adding or renaming a directory here reaches `genpack
+# archive`, the lower staleness check and the commit-id dirty check at once.
+# Everything else in the artifact directory (work/, built images, editor state)
+# is not input. See docs/subdirectories.md for what each one does.
+# The phase split matters: files/ lands in the upper layer only, so a change to
+# it does not invalidate an already built lower layer.
+BUILD_INPUT_DIRS_LOWER = ("savedconfig", "patches", "kernel", "env", "overlay")
+BUILD_INPUT_DIRS_UPPER = ("files",)
+BUILD_INPUT_DIRS = BUILD_INPUT_DIRS_LOWER + BUILD_INPUT_DIRS_UPPER
+GENPACK_JSON_FILES = ("genpack.json5", "genpack.json")
+
 # Map terminal types that nspawn containers don't have terminfo for to compatible alternatives.
 TERM_COMPAT_MAP = {
     "xterm-ghostty": "xterm-256color",
@@ -1023,10 +1035,48 @@ def bash(variant, command=None):
         logging.info("Running bash in the lower image for debugging.")
         subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [variant.lower_image, "bash"])
 
+def get_artifact_commit_id():
+    """Return the git revision of the artifact directory.
+
+    When the working tree has uncommitted changes (untracked files included),
+    " (with local changes)" is appended, so that the first whitespace-separated
+    field is always the SHA, just like /.genpack/timestamp.commit.
+
+    git must be run here on the host, not inside the build container: the
+    container has no git, only the current directory is bound into it (so .git
+    may be out of reach), and the repository would be owned by another user.
+    """
+    def git(*args):
+        result = subprocess.run(["git"] + list(args), capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"'git {' '.join(args)}' failed: {result.stderr.strip()}")
+        #else
+        return result.stdout
+    commit_id = git("rev-parse", "HEAD").strip()
+    # git status alone would miss ignored files, but genpack feeds the build
+    # input directories to the build regardless of what git thinks of them
+    # (files/ is copied into the image wholesale). Look for ignored files there
+    # too, restricted to those paths so that work/ and the built images -- which
+    # genpack itself generates and gitignores -- don't mark every build dirty.
+    dirty = git("status", "--porcelain").strip() != "" \
+        or git("ls-files", "--others", "--ignored", "--exclude-standard", "--",
+               *GENPACK_JSON_FILES, *BUILD_INPUT_DIRS).strip() != ""
+    return commit_id + (" (with local changes)" if dirty else "")
+
 def upper(variant):
     logging.info("Processing upper layer...")
     if not os.path.isfile(variant.lower_image) or not os.path.exists(variant.lower_done):
         raise FileNotFoundError(f"Lower image {variant.lower_image} or lower completion marker {variant.lower_done} does not exist. Please run 'genpack lower' first.")
+
+    # A lower image built before metadata generation was split out has neither
+    # command. Check before anything expensive, since 'genpack upper' does not
+    # rebuild the lower layer the way 'genpack build' does.
+    required_commands = ["genpack-package-scripts", "genpack-generate-metadata"]
+    if subprocess.run(["genpack-helper", "nspawn", "--console=pipe", variant.lower_image,
+                       "sh", "-c", " && ".join(f"command -v {c}" for c in required_commands)],
+                      capture_output=True, text=True).returncode != 0:
+        raise Exception(f"Lower image {variant.lower_image} does not provide {' and '.join(required_commands)}. "
+                        "It carries a genpack-progs from before metadata generation was split out; run 'genpack lower' to rebuild it.")
 
     # always recreate upper image fresh
     if os.path.isfile(variant.upper_image):
@@ -1067,14 +1117,23 @@ def upper(variant):
         env_opts += ["-E", f"PROFILE={profile}"]
     if variant.name is not None:
         env_opts += ["-E", f"VARIANT={variant.name}"]
+    if genpack_json.get("include_commit_id", False):
+        # opt-in なので、取れないなら黙って続けずビルドを止める
+        try:
+            commit_id = get_artifact_commit_id()
+        except Exception as e:
+            raise Exception(f"include_commit_id is specified, but the commit ID could not be determined: {e}")
+        #else
+        logging.info(f"Artifact commit ID: {commit_id}")
+        env_opts += ["-E", f"COMMIT_ID={commit_id}"]
 
-    # 1. execute package scripts and generate /.genpack/ metadata (must run before artifact scripts)
-    logging.info("Executing package scripts and generating metadata...")
+    # 1. execute package scripts (must run before artifact scripts)
+    logging.info("Executing package scripts...")
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [
                     f"--download-dir={download_dir}",
                     f"--overlay-image={variant.upper_image}:upper",
                     *env_opts,
-                    variant.lower_image, "genpack-exec-package-scripts"],
+                    variant.lower_image, "genpack-package-scripts"],
                     check=True)
 
     # 2. create groups
@@ -1171,14 +1230,24 @@ touch /usr""" # see https://www.freedesktop.org/software/systemd/man/systemd-upd
     if len(services) > 0:
         subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [f"--overlay-image={variant.upper_image}:upper", variant.lower_image, "systemctl", "enable"] + services, check=True)
 
-    # 7. copy-up all runtime package files via overlayfs (must run last)
+    # 7. generate /.genpack/ metadata (must run after everything that writes into
+    #    the image: files/ is merged over the root and the artifact's build
+    #    scripts and setup_commands can touch /.genpack too)
+    logging.info("Generating metadata...")
+    subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [
+                    f"--overlay-image={variant.upper_image}:upper",
+                    *env_opts,
+                    variant.lower_image, "genpack-generate-metadata"],
+                    check=True)
+
+    # 8. copy-up all runtime package files via overlayfs (must run last)
     logging.info("Triggering overlayfs copy-up for runtime package files...")
     subprocess.run(["genpack-helper", "nspawn"] + nspawn_opts + [
                     f"--overlay-image={variant.upper_image}:upper",
                     variant.lower_image, "genpack-copyup"],
                     check=True)
 
-    # 8. copy /dev from lower into upper (device nodes cannot be copy-upped inside
+    # 9. copy /dev from lower into upper (device nodes cannot be copy-upped inside
     #    nspawn user namespace due to mknod restrictions; done on host side instead)
     logging.info("Copying /dev from lower image to upper image...")
     subprocess.run(["genpack-helper", "copyup-dev", variant.lower_image, f"{variant.upper_image}:upper"], check=True)
@@ -1246,15 +1315,11 @@ def create_archive():
         os.remove(archive_name)
 
     targets = []
-    if os.path.isfile("genpack.json5"): targets.append("genpack.json5")
-    elif os.path.isfile("genpack.json"): targets.append("genpack.json")
-
-    if os.path.isdir("files"): targets.append("files")
-    if os.path.isdir("savedconfig"): targets.append("savedconfig")
-    if os.path.isdir("patches"): targets.append("patches")
-    if os.path.isdir("kernel"): targets.append("kernel")
-    if os.path.isdir("env"): targets.append("env")
-    if os.path.isdir("overlay"): targets.append("overlay")
+    for json_file in GENPACK_JSON_FILES:
+        if os.path.isfile(json_file):
+            targets.append(json_file)
+            break
+    targets += [d for d in BUILD_INPUT_DIRS if os.path.isdir(d)]
 
     subprocess.run(["tar", "zcvf", archive_name] + targets, check=True)
 
@@ -1287,6 +1352,10 @@ if __name__ == "__main__":
         logging.info(f"Cross building for {arch} on {host_arch}.")
 
     genpack_json, genpack_json_time = load_genpack_json()
+    # reject a non-boolean here rather than in the upper phase, which is hours of
+    # lower build away
+    if "include_commit_id" in genpack_json and not isinstance(genpack_json["include_commit_id"], bool):
+        raise ValueError("include_commit_id in genpack.json must be a boolean")
     if "name" not in genpack_json:
         genpack_json["name"] = os.path.basename(os.getcwd())
         logging.warning(f"'name' not found in genpack.json. using default: {genpack_json['name']}")  
@@ -1353,7 +1422,7 @@ if __name__ == "__main__":
         if not os.path.exists(variant.lower_done): return False
         #else
         lower_done_mtime = os.path.getmtime(variant.lower_done)
-        latest_mtime = get_latest_mtime(genpack_json_time, "savedconfig", "patches", "kernel", "env", "overlay")
+        latest_mtime = get_latest_mtime(genpack_json_time, *BUILD_INPUT_DIRS_LOWER)
         if lower_done_mtime < latest_mtime:
             logging.info(f"Lower completion marker {variant.lower_done} is outdated, rebuilding lower layer.")
             return True

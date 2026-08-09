@@ -40,6 +40,20 @@ genpack のビルドは Lower 層（コンパイル環境）と Upper 層（ラ�
 
 Lower フェーズで処理されるディレクトリはいずれも Portage（パッケージマネージャ）に関連するもので、パッケージのコンパイル時に参照されます。`files/` だけが Upper フェーズで処理され、最終イメージに直接ファイルを配置します。
 
+### ビルド入力の権威的な定義
+
+**この表がアーティファクトディレクトリのうち「genpack がビルド入力として読むもの」の全てです。** これ以外（`work/`、生成された `*.squashfs`、`.vscode/` など）は入力ではありません。
+
+コード上の対応物は `src/genpack.py` の `BUILD_INPUT_DIRS_LOWER` / `BUILD_INPUT_DIRS_UPPER` / `GENPACK_JSON_FILES` で、次の 3 つがこの定義を共有します。
+
+| 用途 | 参照する範囲 |
+|---|---|
+| `genpack archive` の対象 | `GENPACK_JSON_FILES` + `BUILD_INPUT_DIRS`（全フェーズ） |
+| Lower 層の再ビルド判定 | `BUILD_INPUT_DIRS_LOWER` のみ（`files/` は Lower に影響しないため） |
+| `include_commit_id` の dirty 判定 | `GENPACK_JSON_FILES` + `BUILD_INPUT_DIRS`（全フェーズ） |
+
+ディレクトリを追加・改名する場合は、この表と `src/genpack.py` の定数の両方を更新してください。
+
 ## files/ — カスタムファイルとビルドスクリプト
 
 `files/` はアーティファクトのカスタマイズにおいて最も重要なディレクトリです。この下に置いたファイルは、Upper 層の構築時にルートファイルシステムへ再帰的にコピーされます。

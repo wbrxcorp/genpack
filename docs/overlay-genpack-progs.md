@@ -14,7 +14,8 @@
 
 | コマンド | 説明 |
 |---|---|
-| `genpack-exec-package-scripts` | パッケージ固有のポストインストールスクリプトを実行し、`/.genpack/` 以下にメタデータを生成する |
+| `genpack-package-scripts` | パッケージ固有のポストインストールスクリプトを実行する |
+| `genpack-generate-metadata` | `/.genpack/` 以下にメタデータを生成する。イメージへ書き込む処理がすべて終わった後に実行される |
 | `genpack-copyup` | overlayfs の copy-up を利用してランタイムパッケージのファイルを Upper 層へ転送する |
 | `execute-artifact-build-scripts` | アーティファクト固有のビルドスクリプト (`/build`, `/build.d/`) を実行する |
 | `recursive-touch` | ELF バイナリとスクリプトの依存関係を再帰的に解析し、atime を更新する。initramfs 用ファイルリストの出力にも使用 |
@@ -24,8 +25,11 @@
 
 | コマンド | 説明 |
 |---|---|
-| `list-pkg-files` | ランタイムパッケージのファイル一覧を生成する（旧 genpack が使用） |
-| `exec-package-scripts-and-generate-metadata` | パッケージスクリプト実行とメタデータ生成を行う（旧 genpack が使用） |
+| `list-pkg-files` | ランタイムパッケージのファイル一覧を生成する（genpack `a6ea03c` 以前が使用） |
+| `exec-package-scripts-and-generate-metadata` | パッケージスクリプト実行とメタデータ生成を行う（genpack `a6ea03c` 以前が使用） |
+| `genpack-exec-package-scripts` | パッケージスクリプト実行とメタデータ生成を行う（メタデータ生成の分離前の genpack が使用） |
+
+いずれも現行の genpack は呼び出さない。それぞれを最後に使っていた世代の genpack が使われなくなった時点で削除する候補。
 
 ### ダウンロードユーティリティ
 
@@ -67,13 +71,23 @@
 
 ## 各コマンドの詳細
 
-### genpack-exec-package-scripts
+### genpack-package-scripts
 
-Portage の Python API を使用して `@profile`、`@genpack-runtime`（およびオプションで `@genpack-devel`）パッケージセットの依存関係を再帰的に解決し、パッケージごとのポストインストールスクリプト (`/usr/lib/genpack/package-scripts/<pkgname>/`) を実行する。その後、`/.genpack/` ディレクトリにメタデータを生成する。
+Portage の Python API を使用して `@profile`、`@genpack-runtime`（およびオプションで `@genpack-devel`）パッケージセットの依存関係を再帰的に解決し、パッケージごとのポストインストールスクリプト (`/usr/lib/genpack/package-scripts/<pkgname>/`) を実行する。
 
 - `genpack-ignore` eclass を持つパッケージはスキップされる
 - 非 devel モードでは man ページ、ドキュメント、ヘッダファイル等を除外
 - 共有ライブラリモジュール `genpack_pkg` に依存する
+
+アーティファクトのビルドスクリプトより**前**に実行される必要がある。メタデータ生成を担わないのはこのためで、そちらは `genpack-generate-metadata` が最後に行う。
+
+### genpack-generate-metadata
+
+`/.genpack/` ディレクトリにメタデータを生成する。
+
+**アーティファクトの `files/` マージとビルドスクリプトの後に実行される。** ここで書くのは完成したイメージの説明だからである。`files/` を既存イメージの rootfs から組んだ場合にそのイメージの `/.genpack/` を持ち込んでしまう事故も、最後に生成することで打ち消される。パッケージ一覧は Upper フェーズで runtime set やプロファイルが変化した場合にそれを反映する。
+
+なお `packages` は `@profile` / `@genpack-runtime` を起点とした列挙なので、ビルドスクリプトが `emerge` で追加したパッケージは（set を書き換えない限り）生成タイミングに関わらず載らない。詳細は [ADR-0007](../adr/0007-record-artifact-commit-id-in-image.md)。
 
 `/.genpack/` に生成されるメタデータ：
 
@@ -81,8 +95,13 @@ Portage の Python API を使用して `@profile`、`@genpack-runtime`（およ�
 - `profile` — genpack プロファイル名
 - `artifact` — アーティファクト名
 - `variant` — バリアント名
+- `commit-id` — アーティファクト定義の git コミット ID（`include_commit_id` 指定時のみ）
 - `timestamp.commit` — Portage ツリーのコミットタイムスタンプ
 - `packages` — インストール済みパッケージ一覧（USE フラグ、説明等を含む）
+
+`profile`、`artifact`、`variant`、`commit-id` は genpack がホスト側から nspawn に渡す環境変数（`PROFILE`、`ARTIFACT`、`VARIANT`、`COMMIT_ID`）に由来し、渡されなかったものは単に生成されない。`commit-id` と `timestamp.commit` はどちらもコミット ID を含むが別物で、前者はアーティファクト定義、後者は Portage ツリーのものである。
+
+`banner`（`genpack/base[banner]` 使用時のログインバナー）はここでは生成されない。パッケージスクリプトが生成するものなので、アーティファクトが `files/.genpack/banner` を置けば上書きできる。`/.genpack/` はアーティファクトが自前のファイル（バージョン情報など）を置く場所としても使われており、上記の genpack 生成分と共存する。
 
 ### genpack-copyup
 
@@ -127,11 +146,15 @@ GitHub API を使用して最新リリースのアセットを取得し、正規
 
 ### list-pkg-files（後方互換）
 
-旧 genpack 向けの後方互換ツール。`genpack-exec-package-scripts` に置き換えられた。ランタイムパッケージのファイル一覧を生成し、パッケージ依存関係グラフを `/.genpack/_pkgs_with_deps.pkl` に保存する。現行の genpack は使用しない。
+ランタイムパッケージのファイル一覧を生成し、パッケージ依存関係グラフを `/.genpack/_pkgs_with_deps.pkl` に保存する。genpack `a6ea03c`（2026-05-19、Upper 層の転送を overlayfs copy-up へ切り替えたコミット）で `genpack-copyup` に置き換えられ、以降使われていない。
 
 ### exec-package-scripts-and-generate-metadata（後方互換）
 
-旧 genpack 向けの後方互換ツール。`genpack-exec-package-scripts` に置き換えられた。`list-pkg-files` が保存した依存関係データを読み込み、パッケージスクリプトの実行とメタデータ生成を行う。現行の genpack は使用しない。
+`list-pkg-files` が保存した依存関係データを読み込み、パッケージスクリプトの実行とメタデータ生成を行う。`list-pkg-files` と対で使われるもので、同じく genpack `a6ea03c` 以降使われていない。
+
+### genpack-exec-package-scripts（後方互換）
+
+パッケージスクリプトの実行とメタデータ生成を 1 つで行っていたツール。`genpack-package-scripts` と `genpack-generate-metadata` への分離前の genpack が使用する。生成したメタデータをその後の `files/` マージやビルドスクリプトが上書きできてしまうのが分離の理由。現行の genpack は使用しない。
 
 ## genpack-ignore eclass
 
