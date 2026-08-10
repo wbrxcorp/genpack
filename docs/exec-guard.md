@@ -107,7 +107,6 @@ exec-guard 自体を知らない攻撃者が一般的な Linux 環境を想定�
 | `memfd_create` + `fexecve` によるファイルレス実行 | ブロック＋audit ログ |
 | upper layer ファイルの `mmap(PROT_READ)` → `mprotect(+PROT_EXEC)`（2段 W^X バイパス） | ブロック＋audit ログ |
 | `touch /usr/bin/bash` 等による誤コピーアップ | `/usr` の ro mount で防止 |
-| シェバンスクリプトの直接 `execve` | ブロック＋audit ログ |
 
 `memfd_create` でディスクに痕跡を残さず ELF を実行する手法は、攻撃ツールが検知回避のために好んで用いるものですが、exec-guard はこれをブロックします。memfd は内部 tmpfs 上の無名ファイルであり、その `s_dev` は `trusted_devs` マップに登録されていないため、`bprm_check_security` フック（ELF マジック判定後の `check_file()`）が `EPERM` を返します。匿名 `mmap(PROT_EXEC)` へのシェルコード（後述の「対応しない範囲」）とは異なり、こちらはファイルバックのマッピングを経由するため捕捉できます。検証用のテストスクリプトは exec-guard 専用テストアーティファクト `genpack-artifacts/execguard` の `files/usr/bin/test-memfd-exec` に収録しており、ブロックは実機で確認済みです。mmap→mprotect の 2 段バイパスについても同様に `files/usr/bin/test-mprotect-exec` で検証でき、upper layer ファイルのみブロック・lower layer ファイルと匿名マッピングは許可されることを確認済みです。これらの攻撃シミュレータと回帰スイート（`files/root/run-exec-guard-tests`）は、本番アーティファクトへ誤って混入しないよう、有効化用の genpack-stencils テーマではなくこのテストアーティファクト側に置いています。
 
@@ -115,7 +114,7 @@ exec-guard 自体を知らない攻撃者が一般的な Linux 環境を想定�
 
 | 攻撃手法 | 理由 |
 |---|---|
-| `bash ./evil.sh` 等インタープリタ経由のスクリプト実行 | スクリプトは `execve` されない（意図的な設計） |
+| upper layer のスクリプト実行（`./evil.sh` の直接 `execve`、`bash ./evil.sh` のインタープリタ経由とも） | `execve` のチェックを ELF バイナリに限定しているため（意図的な設計。前述「ELF バイナリのみが対象」）。直接 `execve` した場合もシェバン行を読む pass は非 ELF として素通りし、実際に `execve` されるインタープリタ本体は lower layer 由来なので許可される |
 | カーネル脆弱性によるページキャッシュ改ざん | カーネル自体の信頼が前提 |
 | anonymous `mmap(PROT_EXEC)` へのシェルコード書き込み・実行（および匿名マッピングへの `mprotect(+PROT_EXEC)`） | ファイルを持たない匿名マッピングは `mmap_file`/`file_mprotect` いずれのファイルベース判定の対象にもならない。塞ぐことは技術的には可能（プロセス単位の W^X 強制）だが、Python・Java・Node.js 等の JIT コンパイラが同じ仕組みを正当な用途で使っており、どのパッケージが JIT を使うか実行前に把握することが難しいため、現実的ではない |
 
