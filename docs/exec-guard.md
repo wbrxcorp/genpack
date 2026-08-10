@@ -34,9 +34,11 @@ SquashFS (lower layer)  ←── 信頼済み。exec-guard が許可
 genpack-init が PID 1 として起動した直後に以下を実行します。
 
 1. **eBPF LSM プログラムのロード**: `/sys/kernel/btf/overlay` の BTF 情報を使い、overlayfs の内部構造（`ovl_inode.__upperdentry`）を解釈できる BPF プログラムをカーネルにロード
-2. **信頼済みデバイスの登録**: `/run/initramfs/ro`（SquashFS のマウントポイント）の `st_dev` を BPF マップに登録
-3. **BPF リンクのピン留め**: `execl(systemd)` 後も BPF プログラムが有効であり続けるよう `/sys/fs/bpf/exec_guard/` にリンクをピン留め
+2. **信頼済みデバイスの登録**: `/run/initramfs/ro`（SquashFS のマウントポイント）のデバイス番号を BPF マップに登録。BPF 側が参照する `super_block->s_dev` はカーネル内部のエンコード（`major << 20 | minor`）なので、`stat(2)` の `st_dev`（glibc の別レイアウト）をそのままではなく major/minor に分解して再エンコードした値を登録する
+3. **BPF リンクのピン留め**: `execl(systemd)` 後も BPF プログラムが有効であり続けるよう `/sys/fs/bpf/exec_guard/` にリンクをピン留め。この時点では systemd がまだ起動しておらず `/sys/fs/bpf` が未マウント（通常は systemd が後からマウントする）なので、genpack-init が自分で bpffs をマウントしてからピン留めする。すでにマウント済み（`EBUSY`）の場合はそのまま続行する
 4. **`/usr` の読み取り専用マウント**: `touch /usr/bin/bash` のような誤操作で上書きコピーが発生し exec-guard が自分自身をブロックしてしまう事態を防ぐため、`/usr` を read-only bind mount
+
+1〜3 が失敗した場合（`CONFIG_BPF_LSM` 無効、overlay の BTF が無い等）は警告をログに残して起動を続行しますが、4 の `/usr` read-only mount は独立に実行されます。したがって「BPF による保護は効いていないが `/usr` だけ read-only」という縮退状態がありえます。実際に保護が有効かどうかは `/sys/fs/bpf/exec_guard/` にリンクが存在するか、または `/var/log/genpack-init.log` の `exec_guard: active.` 行で確認してください。
 
 これ以降のすべての `execve()`、`mmap(PROT_EXEC)`、`mprotect(+PROT_EXEC)` に対し、以下のルールが適用されます。
 
@@ -75,6 +77,8 @@ exec-guard を有効にしたイメージには `/etc/audit/rules.d/exec_guard.r
 # 今回のブート分のみ表示
 ausearch -k exec_guard_deny --interpret -ts boot | grep -v "^type=CONFIG_CHANGE"
 ```
+
+`ausearch` は stdin がパイプのときログファイルではなく stdin を入力源にするため、`ssh host 'ausearch -k exec_guard_deny'` のような非対話実行では `<no matches>` になります。この場合は `--input-logs`（または `-if /var/log/audit/audit.log`）でログを明示的に読ませてください。
 
 出力例（exec ブロック）:
 ```
