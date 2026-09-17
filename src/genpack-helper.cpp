@@ -338,6 +338,8 @@ int nspawn(const std::filesystem::path& lower_img,
         "systemd-nspawn", "-q", "--suppress-sync=true", 
         "--as-pid2", "-M", "genpack-" + std::to_string(getpid()), "--image=" + lower_img.string(),
         "--capability=CAP_MKNOD,CAP_SYS_ADMIN,CAP_NET_ADMIN", // Portage's network sandbox needs CAP_NET_ADMIN
+        // AF_NETLINK is required by Portage's network sandbox; systemd will restrict the default to the rest in a future version
+        "--restrict-address-families=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
     };
     uid_t original_uid = getuid();
     // Bind mount the current directory to /mnt/host
