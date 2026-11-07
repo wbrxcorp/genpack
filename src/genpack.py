@@ -1185,7 +1185,10 @@ def upper(variant):
         if len(additional_groups) > 0:
             useradd_cmd += ["-G", ",".join(additional_groups)]
         if shell is not None: useradd_cmd += ["-s", shell]
+        # -M を明示しない場合は shadow の既定 (login.defs CREATE_HOME=yes) が勝つため、
+        # skel 付きホームが作られてしまう。false を明示したら -M で抑える。
         if create_home: useradd_cmd += ["-m"]
+        else: useradd_cmd += ["-M"]
         if empty_password: useradd_cmd += ["-p", ""]
         useradd_cmd.append(name)
         logging.info("Creating user %s..." % name)
