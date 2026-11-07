@@ -296,6 +296,44 @@ WantedBy=multi-user.target
 
 `systemctl enable sock-forward@8080` とすれば `localhost:8080 → vsock:2:<自分の CID>` のブリッジが起動します。ポート番号に `:1`、`:2` … のオフセットを付加することで（例: `sock-forward@8080:1`）複数のホストソケットに対応できます。
 
+#### --export-vsock オプション
+
+逆方向です。`--export-vsock=PORT[:NAME]` は、ゲスト内で listen している vsock ポートをホスト上の Unix ドメインソケット **`$XDG_RUNTIME_DIR/vm/<vmname>/vsock/<NAME>.sock`**（`NAME` 省略時は `<PORT>.sock`）として露出するプロキシプロセス（socat）を vm コマンドが起動・管理する機能です。
+
+```
+vm run system.squashfs --export-vsock 80:http --export-vsock 1234
+```
+
+**vsock ポート番号の決定:**
+
+`--sock-forward` と違い、PORT は**リテラルな vsock ポート**そのもので、CID ベースのオフセット補正はありません。ゲスト側が同じポートで listen する必要があるため、アーティファクトごとに固定ポートを決めうちで割り当てます。起動中は `vm show` の JSON に `vsock_exports` として現れます。
+
+**通信経路:**
+
+```
+[ホスト上のクライアント]
+    ↓ UNIX-CONNECT $XDG_RUNTIME_DIR/vm/<vmname>/vsock/http.sock
+[ホスト側 socat プロキシ]  ← vm コマンドが起動・管理
+    ↓ VSOCK-CONNECT <ゲスト CID>:<PORT>
+[ゲスト内の vsock listen]  ← systemd socket unit
+    ↓ TCP 127.0.0.1:PORT
+[ゲスト内のサービス]
+```
+
+**ゲスト側: `vsock-export@` テンプレート:**
+
+中継には `genpack/base` が同梱するテンプレートを使い、アーティファクトは有効化するだけです。
+
+```json5
+{ services: ["apache2", "vsock-export@80.socket"] }
+```
+
+`ListenStream=vsock::%i` の socket unit が `systemd` 同梱の `systemd-socket-proxyd`（`Accept=no` で listen fd を受け取り、接続ごとに `127.0.0.1:%i` へ中継する）を起動します。ゲスト側に socat は不要です。オプションの語順とユニット名の語順が違うのは、vm のオプションが動詞句、ユニット名と `vm show` の `vsock_exports` は名詞だからです。
+
+テンプレートは `ConditionVirtualization=vm` でガードされています。`--export-vsock` は paravirt プロファイル専用ではなく、systemimg プロファイルのイメージを `vm run --bios` で起動した場合にも使えるため、テンプレートは base に置かれています。ただし実機（baremetal）やビルドホストでは vsock が使えないので、条件を満たさない環境では socket unit は failed ではなく skipped になり、そのまま enable しておいて害はありません。
+
+**注意:** AF_VSOCK には送信元 CID の allowlist がありません。ホスト上で AF_VSOCK を開けるプロセスは、vm が露出する Unix ドメインソケットを迂回してゲストの CID:PORT に直接 connect できます。したがって Unix ソケットの所有者や mode はこの listener のアクセス制御にはなりません（Linux の vhost-vsock は兄弟ゲスト間の通信を中継しないので、露出は他の VM に対してではなくホストプロセスに対して生じます）。宛先ポートが vsock ポートと違うサービス（例: vsock 80 → TCP 9980）は、`ExecStart=` を差し替える drop-in で扱います。
+
 ### vm サービスモード
 
 `vm` コマンドには `vm.ini` ファイルを読み取るサービスモードがあります。各 VM のディレクトリ構成は以下の通りです。
